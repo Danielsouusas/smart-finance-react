@@ -1,16 +1,13 @@
-# React + Vite
+Título: Do Zero ao Dashboard Financeiro: Meu novo projeto com React & Tailwind v4! 
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Pessoal, acabo de finalizar o Smart Finance, uma aplicação de gestão financeira que construí para colocar em prática tecnologias modernas de frontend.
 
-Currently, two official plugins are available:
+O objetivo foi criar uma ferramenta fluida e visual para controle de gastos. No projeto, foquei em:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+ Interface Responsiva com Tailwind CSS v4 (design limpo e adaptável). Visualização de Dados com gráficos dinâmicos usando Recharts. Persistência Local, garantindo que os dados fiquem salvos no navegador do usuário. Lógica de Estados complexa com React para cálculos de saldo em tempo real.
 
-## React Compiler
+Foi um desafio gratificante lidar com a arquitetura de componentes e a nova versão do Tailwind. O código já está disponível no meu GitHub!
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+ [Link do seu GitHub aqui]  [Link do Deploy naVercel aqui]
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+#ReactJS #WebDevelopment #TailwindCSS #Frontend #Programacao #Finanças
