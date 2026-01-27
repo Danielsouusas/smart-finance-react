@@ -1,152 +1,233 @@
-import { useState, useEffect } from 'react';
-import { ArrowUpCircle, ArrowDownCircle, Plus, Trash2 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import './index.css';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import { 
+  PlusCircle, 
+  ArrowUpCircle, 
+  ArrowDownCircle, 
+  Trash2, 
+  DollarSign,
+  Lock
+} from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
 
 function App() {
-  const [transactions, setTransactions] = useState(() => {
-    const saved = localStorage.getItem('smart_finance_data');
-    return saved ? JSON.parse(saved) : [
-      { id: 1, title: 'Exemplo: Salário', amount: 5000, type: 'income', category: 'Salário' },
-    ];
-  });
-
-  // ESTADOS DO FORMULÁRIO
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [transactions, setTransactions] = useState([]);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('income');
-  const [category, setCategory] = useState('Outros'); // <--- Isso evita a tela branca!
+
+  const MINHA_SENHA = "1234"; 
 
   useEffect(() => {
-    localStorage.setItem('smart_finance_data', JSON.stringify(transactions));
-  }, [transactions]);
+    if (isAuthorized) {
+      fetchTransactions();
+    }
+  }, [isAuthorized]);
 
-  const totalIncomes = transactions
-    .filter(t => t.type === 'income')
-    .reduce((acc, t) => acc + t.amount, 0);
+  async function fetchTransactions() {
+    const { data, error } = await supabase
+      .from('transacoes')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  const totalOutcomes = transactions
-    .filter(t => t.type === 'outcome')
-    .reduce((acc, t) => acc + t.amount, 0);
+    if (error) console.error('Erro ao buscar:', error);
+    else setTransactions(data || []);
+  }
 
-  const totalBalance = totalIncomes - totalOutcomes;
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (passwordInput === MINHA_SENHA) {
+      setIsAuthorized(true);
+    } else {
+      alert("Senha incorreta! ❌");
+    }
+  };
 
-  const handleAddTransaction = (e) => {
+  const handleAddTransaction = async (e) => {
     e.preventDefault();
     if (!title || !amount) return;
 
-    const newTransaction = {
-      id: Date.now(),
-      title,
-      amount: Number(amount),
-      type,
-      category // <--- Salvando a categoria
-    };
+    const { data, error } = await supabase
+      .from('transacoes')
+      .insert([{ 
+        descricao: title, 
+        valor: parseFloat(amount), 
+        tipo: type 
+      }])
+      .select();
 
-    setTransactions([newTransaction, ...transactions]);
-    setTitle('');
-    setAmount('');
+    if (error) {
+      alert("Erro ao salvar!");
+    } else {
+      setTransactions([data[0], ...transactions]);
+      setTitle('');
+      setAmount('');
+    }
   };
 
-  const deleteTransaction = (id) => {
-    setTransactions(transactions.filter(t => t.id !== id));
+  const handleDelete = async (id) => {
+    const { error } = await supabase
+      .from('transacoes')
+      .delete()
+      .eq('id', id);
+
+    if (error) alert("Erro ao deletar!");
+    else setTransactions(transactions.filter(t => t.id !== id));
   };
+
+  // --- CÁLCULOS BLINDADOS (Lê qualquer variação de nome) ---
+  const totalIncome = transactions
+    .filter(t => {
+      const tipo = t.tipo?.toLowerCase() || "";
+      return tipo.includes('entrad') || tipo === 'income';
+    })
+    .reduce((acc, t) => acc + Number(t.valor || 0), 0);
+
+  const totalOutcome = transactions
+    .filter(t => {
+      const tipo = t.tipo?.toLowerCase() || "";
+      return tipo.includes('said') || tipo.includes('saíd') || tipo === 'outcome';
+    })
+    .reduce((acc, t) => acc + Number(t.valor || 0), 0);
+
+  const totalBalance = totalIncome - totalOutcome;
+
+  const chartData = [
+    { name: 'Entradas', valor: totalIncome, color: '#00b37e' },
+    { name: 'Saídas', valor: totalOutcome, color: '#f75a68' }
+  ];
+
+  if (!isAuthorized) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#121214', color: 'white', fontFamily: 'sans-serif' }}>
+        <form onSubmit={handleLogin} style={{ textAlign: 'center', padding: '2.5rem', background: '#202024', borderRadius: '12px', border: '1px solid #323238' }}>
+          <Lock size={48} style={{ marginBottom: '1rem', color: '#00b37e' }} />
+          <h2 style={{ marginBottom: '0.5rem' }}>Acesso Restrito</h2>
+          <p style={{ color: '#8d8d99', marginBottom: '1.5rem' }}>Digite a senha do Smart Finance</p>
+          <input 
+            type="password" 
+            placeholder="Senha"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            style={{ width: '100%', padding: '14px', marginBottom: '1rem', borderRadius: '6px', border: '1px solid #121214', background: '#121214', color: 'white' }}
+          />
+          <button type="submit" style={{ width: '100%', padding: '14px', background: '#00b37e', border: 'none', borderRadius: '6px', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}>
+            Acessar Sistema
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 text-gray-800">
-      <header className="max-w-4xl mx-auto mb-10">
-        <h1 className="text-3xl font-bold text-emerald-700">Smart Finance</h1>
-        <p className="text-gray-500 text-sm font-medium">Controle financeiro inteligente 🔒</p>
+    <div style={{ minHeight: '100vh', backgroundColor: '#121214', color: '#e1e1e6', fontFamily: 'sans-serif', padding: '20px' }}>
+      <header style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <h1 style={{ color: '#00b37e' }}>Smart Finance 🚀</h1>
       </header>
 
-      <main className="max-w-4xl mx-auto">
-        {/* CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 mb-1 font-medium">Saldo Geral</p>
-            <h2 className="text-2xl font-bold">R$ {totalBalance.toLocaleString('pt-BR')}</h2>
+      <main style={{ maxWidth: '900px', margin: '0 auto' }}>
+        {/* Cards de Resumo */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+          <div style={{ background: '#29292e', padding: '24px', borderRadius: '8px', borderLeft: '4px solid #00b37e' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8d8d99' }}>Entradas <ArrowUpCircle color="#00b37e" /></div>
+            <h2 style={{ fontSize: '28px', marginTop: '10px' }}>R$ {totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
           </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-emerald-600 mb-1 flex items-center gap-1 font-medium"><ArrowUpCircle size={18}/> Entradas</p>
-            <h2 className="text-2xl font-bold text-emerald-600">R$ {totalIncomes.toLocaleString('pt-BR')}</h2>
+          <div style={{ background: '#29292e', padding: '24px', borderRadius: '8px', borderLeft: '4px solid #f75a68' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8d8d99' }}>Saídas <ArrowDownCircle color="#f75a68" /></div>
+            <h2 style={{ fontSize: '28px', marginTop: '10px' }}>R$ {totalOutcome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
           </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-red-500 mb-1 flex items-center gap-1 font-medium"><ArrowDownCircle size={18}/> Saídas</p>
-            <h2 className="text-2xl font-bold text-red-500">R$ {totalOutcomes.toLocaleString('pt-BR')}</h2>
-          </div>
-        </div>
-
-        {/* GRÁFICO */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
-          <h3 className="text-sm font-bold text-gray-400 mb-6 uppercase tracking-wider">Fluxo de Caixa</h3>
-          <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[{ name: 'Entradas', valor: totalIncomes }, { name: 'Saídas', valor: totalOutcomes }]}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                <Tooltip cursor={{fill: '#f3f4f6'}} />
-                <Bar dataKey="valor" radius={[8, 8, 8, 8]} barSize={50}>
-                  <Cell fill="#10b981" />
-                  <Cell fill="#ef4444" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div style={{ background: totalBalance >= 0 ? '#015f43' : '#aa2834', padding: '24px', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>Total <DollarSign /></div>
+            <h2 style={{ fontSize: '28px', marginTop: '10px' }}>R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
           </div>
         </div>
 
-        {/* FORMULÁRIO COM CATEGORIA */}
-        <form onSubmit={handleAddTransaction} className="bg-white p-6 rounded-2xl shadow-sm mb-8 flex flex-wrap gap-4 items-end border border-gray-100">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-bold text-gray-600 mb-1">Descrição</label>
-            <input required className="w-full border border-gray-200 p-2 rounded-lg outline-emerald-500" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Mercado..." />
-          </div>
-          <div className="w-full md:w-32">
-            <label className="block text-sm font-bold text-gray-600 mb-1">Valor</label>
-            <input required type="number" className="w-full border border-gray-200 p-2 rounded-lg outline-emerald-500" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          </div>
-          <div className="w-full md:w-32">
-            <label className="block text-sm font-bold text-gray-600 mb-1">Tipo</label>
-            <select className="w-full border border-gray-200 p-2 rounded-lg bg-white" value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="income">Entrada</option>
-              <option value="outcome">Saída</option>
-            </select>
-          </div>
-          <div className="w-full md:w-40">
-            <label className="block text-sm font-bold text-gray-600 mb-1">Categoria</label>
-            <select className="w-full border border-gray-200 p-2 rounded-lg bg-white" value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="Alimentação">🍕 Alimentação</option>
-              <option value="Salário">💰 Salário</option>
-              <option value="Lazer">🎡 Lazer</option>
-              <option value="Saúde">🏥 Saúde</option>
-              <option value="Transporte">🚗 Transporte</option>
-              <option value="Outros">✨ Outros</option>
-            </select>
-          </div>
-          <button className="bg-emerald-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-emerald-700 flex items-center gap-2">
-            <Plus size={20}/> Adicionar
+        {/* Gráfico */}
+        <div style={{ background: '#202024', padding: '25px', borderRadius: '8px', marginBottom: '40px', height: '350px', border: '1px solid #323238' }}>
+          <h3 style={{ marginBottom: '20px' }}>Fluxo de Caixa</h3>
+          <ResponsiveContainer width="100%" height="90%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#323238" vertical={false} />
+              <XAxis dataKey="name" stroke="#8d8d99" />
+              <YAxis stroke="#8d8d99" />
+              <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: '#202024', borderRadius: '8px', border: '1px solid #323238' }} />
+              <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Formulário */}
+        <form onSubmit={handleAddTransaction} style={{ display: 'flex', gap: '12px', marginBottom: '40px', flexWrap: 'wrap' }}>
+          <input 
+            style={{ flex: 2, minWidth: '200px', padding: '14px', background: '#121214', border: '1px solid #323238', borderRadius: '6px', color: 'white' }}
+            placeholder="Ex: Aluguel, Salário..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input 
+            style={{ flex: 1, minWidth: '120px', padding: '14px', background: '#121214', border: '1px solid #323238', borderRadius: '6px', color: 'white' }}
+            type="number"
+            placeholder="R$ 0,00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <select 
+            style={{ flex: 1, minWidth: '120px', padding: '14px', background: '#121214', border: '1px solid #323238', borderRadius: '6px', color: 'white' }}
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            <option value="income">Entrada</option>
+            <option value="outcome">Saída</option>
+          </select>
+          <button style={{ padding: '0 25px', background: '#00b37e', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', transition: 'filter 0.2s' }}>
+            <PlusCircle size={24} />
           </button>
         </form>
 
-        {/* LISTA COM CATEGORIA */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <h3 className="p-4 bg-gray-50 border-b font-bold text-gray-700 text-xs uppercase">Histórico</h3>
-          <div className="divide-y divide-gray-100">
-            {transactions.map(t => (
-              <div key={t.id} className="flex justify-between items-center p-4">
-                <div className="flex flex-col">
-                  <span className="font-bold text-gray-800">{t.title}</span>
-                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
-                    {t.category || 'Outros'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className={t.type === 'income' ? 'text-emerald-600 font-bold' : 'text-red-500 font-bold'}>
-                    R$ {t.amount.toLocaleString('pt-BR')}
-                  </span>
-                  <button onClick={() => deleteTransaction(t.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={18}/></button>
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Tabela de Histórico */}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+            <thead>
+              <tr style={{ color: '#8d8d99', textAlign: 'left' }}>
+                <th style={{ padding: '0 20px' }}>Descrição</th>
+                <th style={{ padding: '0 20px' }}>Valor</th>
+                <th style={{ padding: '0 20px' }}>Data</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map(t => (
+                <tr key={t.id} style={{ background: '#29292e' }}>
+                  <td style={{ padding: '16px 20px', borderRadius: '6px 0 0 6px' }}>{t.descricao}</td>
+                  <td style={{ padding: '16px 20px', color: (t.tipo?.toLowerCase().includes('entrad') || t.tipo === 'income') ? '#00b37e' : '#f75a68', fontWeight: 'bold' }}>
+                    {(t.tipo?.toLowerCase().includes('entrad') || t.tipo === 'income') ? '+ ' : '- '} 
+                    R$ {Number(t.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td style={{ padding: '16px 20px', color: '#8d8d99' }}>{new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
+                  <td style={{ padding: '16px 20px', borderRadius: '0 6px 6px 0', textAlign: 'right' }}>
+                    <button onClick={() => handleDelete(t.id)} style={{ background: 'transparent', border: 'none', color: '#f75a68', cursor: 'pointer' }}>
+                      <Trash2 size={20} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </main>
     </div>
