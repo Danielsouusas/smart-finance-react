@@ -68,7 +68,7 @@ const App = () => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (usuario === 'admin' && senhaInput === '123') setLogado(true);
+    if (usuario === 'daniel' && senhaInput === '4321') setLogado(true);
     else alert("ACESSO NEGADO");
   };
 
