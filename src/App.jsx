@@ -1,237 +1,177 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
-import { 
-  PlusCircle, 
-  ArrowUpCircle, 
-  ArrowDownCircle, 
-  Trash2, 
-  DollarSign,
-  Lock
-} from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  Cell
-} from 'recharts';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { createClient } from '@supabase/supabase-js';
 
-function App() {
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [transactions, setTransactions] = useState([]);
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
-  const [type, setType] = useState('income');
+// --- CONEXÃO OFICIAL SMART_GDTECH ---
+const supabaseUrl = 'https://hoegguhazbiyrpzegard.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZWdndWhhemJpeXJwemVnYXJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1MDk5MDEsImV4cCI6MjA4NTA4NTkwMX0.Csxr-t8ecO5QopNzfgPiFE6ukeLowYVFO-eDkPBe7S4';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const MINHA_SENHA = "1234"; 
+const App = () => {
+  const [logado, setLogado] = useState(false);
+  const [usuario, setUsuario] = useState('');
+  const [senhaInput, setSenhaInput] = useState('');
+  const [transacoes, setTransacoes] = useState([]);
 
-  useEffect(() => {
-    if (isAuthorized) {
-      fetchTransactions();
-    }
-  }, [isAuthorized]);
+  const [descricao, setDescricao] = useState('');
+  const [valor, setValor] = useState('');
+  const [tipo, setTipo] = useState('entrada');
+  const [data, setData] = useState(new Date().toISOString().split('T')[0]);
+  const [mesFiltro, setMesFiltro] = useState(new Date().getMonth() + 1); // Janeiro = 1
 
-  async function fetchTransactions() {
-    const { data, error } = await supabase
-      .from('transacoes')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const meses = [
+    { n: 1, nome: "JANEIRO" }, { n: 2, nome: "FEVEREIRO" }, { n: 3, nome: "MARÇO" },
+    { n: 4, nome: "ABRIL" }, { n: 5, nome: "MAIO" }, { n: 6, nome: "JUNHO" },
+    { n: 7, nome: "JULHO" }, { n: 8, nome: "AGOSTO" }, { n: 9, nome: "SETEMBRO" },
+    { n: 10, nome: "OUTUBRO" }, { n: 11, nome: "NOVEMBRO" }, { n: 12, nome: "DEZEMBRO" }
+  ];
 
-    if (error) console.error('Erro ao buscar:', error);
-    else setTransactions(data || []);
-  }
+  const buscarDados = async () => {
+    const { data: dataDb } = await supabase.from('transacoes').select('*').order('data', { ascending: true });
+    if (dataDb) setTransacoes(dataDb);
+  };
+
+  useEffect(() => { if (logado) buscarDados(); }, [logado]);
+
+  // --- CÁLCULO À PROVA DE ERROS ---
+  const resumo = useMemo(() => {
+    const listaFiltrada = transacoes.filter(t => {
+      if (!t.data) return false;
+      const mesItem = parseInt(t.data.split('-')[1], 10);
+      return mesItem === mesFiltro;
+    });
+
+    let totalEntradas = 0;
+    let totalSaidas = 0;
+
+    listaFiltrada.forEach(t => {
+      const v = parseFloat(t.valor) || 0;
+      if (t.tipo === 'entrada') totalEntradas += v;
+      else totalSaidas += v;
+    });
+
+    return { 
+      ent: totalEntradas, 
+      sai: totalSaidas, 
+      saldo: totalEntradas - totalSaidas, 
+      lista: listaFiltrada 
+    };
+  }, [transacoes, mesFiltro]);
+
+  const dadosGrafico = useMemo(() => {
+    let acumulado = 0;
+    return resumo.lista.map(t => {
+      acumulado += (t.tipo === 'entrada' ? Number(t.valor) : -Number(t.valor));
+      return { dia: t.data.split('-')[2], saldo: acumulado };
+    });
+  }, [resumo.lista]);
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (passwordInput === MINHA_SENHA) {
-      setIsAuthorized(true);
-    } else {
-      alert("Senha incorreta! ❌");
-    }
+    if (usuario === 'admin' && senhaInput === '123') setLogado(true);
+    else alert("ACESSO NEGADO");
   };
 
-  const handleAddTransaction = async (e) => {
-    e.preventDefault();
-    if (!title || !amount) return;
-
-    const { data, error } = await supabase
-      .from('transacoes')
-      .insert([{ 
-        descricao: title, 
-        valor: parseFloat(amount), 
-        tipo: type 
-      }])
-      .select();
-
-    if (error) {
-      alert("Erro ao salvar!");
-    } else {
-      setTransactions([data[0], ...transactions]);
-      setTitle('');
-      setAmount('');
-    }
-  };
-
-  const handleDelete = async (id) => {
-    const { error } = await supabase
-      .from('transacoes')
-      .delete()
-      .eq('id', id);
-
-    if (error) alert("Erro ao deletar!");
-    else setTransactions(transactions.filter(t => t.id !== id));
-  };
-
-  // --- CÁLCULOS BLINDADOS (Lê qualquer variação de nome) ---
-  const totalIncome = transactions
-    .filter(t => {
-      const tipo = t.tipo?.toLowerCase() || "";
-      return tipo.includes('entrad') || tipo === 'income';
-    })
-    .reduce((acc, t) => acc + Number(t.valor || 0), 0);
-
-  const totalOutcome = transactions
-    .filter(t => {
-      const tipo = t.tipo?.toLowerCase() || "";
-      return tipo.includes('said') || tipo.includes('saíd') || tipo === 'outcome';
-    })
-    .reduce((acc, t) => acc + Number(t.valor || 0), 0);
-
-  const totalBalance = totalIncome - totalOutcome;
-
-  const chartData = [
-    { name: 'Entradas', valor: totalIncome, color: '#00b37e' },
-    { name: 'Saídas', valor: totalOutcome, color: '#f75a68' }
-  ];
-
-  if (!isAuthorized) {
+  if (!logado) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#121214', color: 'white', fontFamily: 'sans-serif' }}>
-        <form onSubmit={handleLogin} style={{ textAlign: 'center', padding: '2.5rem', background: '#202024', borderRadius: '12px', border: '1px solid #323238' }}>
-          <Lock size={48} style={{ marginBottom: '1rem', color: '#00b37e' }} />
-          <h2 style={{ marginBottom: '0.5rem' }}>Acesso Restrito</h2>
-          <p style={{ color: '#8d8d99', marginBottom: '1.5rem' }}>Digite a senha do Smart Finance</p>
-          <input 
-            type="password" 
-            placeholder="Senha"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            style={{ width: '100%', padding: '14px', marginBottom: '1rem', borderRadius: '6px', border: '1px solid #121214', background: '#121214', color: 'white' }}
-          />
-          <button type="submit" style={{ width: '100%', padding: '14px', background: '#00b37e', border: 'none', borderRadius: '6px', color: 'white', fontWeight: 'bold', cursor: 'pointer' }}>
-            Acessar Sistema
-          </button>
-        </form>
+      <div style={{ backgroundColor: '#050505', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'monospace' }}>
+        <div style={{ backgroundColor: 'rgba(20, 20, 20, 0.9)', padding: '40px', borderRadius: '20px', width: '350px', border: '1px solid #00d1b2', textAlign: 'center' }}>
+          <h2 style={{ color: '#00d1b2', letterSpacing: '3px' }}>SMART_GDTECH</h2>
+          <form onSubmit={handleLogin}>
+            <input type="text" placeholder="USER" onChange={(e) => setUsuario(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: '#000', color: '#00d1b2', border: '1px solid #333' }} />
+            <input type="password" placeholder="PASS" onChange={(e) => setSenhaInput(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', backgroundColor: '#000', color: '#00d1b2', border: '1px solid #333' }} />
+            <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#00d1b2', fontWeight: 'bold', border: 'none', color: '#000', cursor: 'pointer' }}>ACESSAR</button>
+          </form>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#121214', color: '#e1e1e6', fontFamily: 'sans-serif', padding: '20px' }}>
-      <header style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1 style={{ color: '#00b37e' }}>Smart Finance 🚀</h1>
-      </header>
-
-      <main style={{ maxWidth: '900px', margin: '0 auto' }}>
-        {/* Cards de Resumo */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-          <div style={{ background: '#29292e', padding: '24px', borderRadius: '8px', borderLeft: '4px solid #00b37e' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8d8d99' }}>Entradas <ArrowUpCircle color="#00b37e" /></div>
-            <h2 style={{ fontSize: '28px', marginTop: '10px' }}>R$ {totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
-          </div>
-          <div style={{ background: '#29292e', padding: '24px', borderRadius: '8px', borderLeft: '4px solid #f75a68' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8d8d99' }}>Saídas <ArrowDownCircle color="#f75a68" /></div>
-            <h2 style={{ fontSize: '28px', marginTop: '10px' }}>R$ {totalOutcome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
-          </div>
-          <div style={{ background: totalBalance >= 0 ? '#015f43' : '#aa2834', padding: '24px', borderRadius: '8px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>Total <DollarSign /></div>
-            <h2 style={{ fontSize: '28px', marginTop: '10px' }}>R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
-          </div>
-        </div>
-
-        {/* Gráfico */}
-        <div style={{ background: '#202024', padding: '25px', borderRadius: '8px', marginBottom: '40px', height: '350px', border: '1px solid #323238' }}>
-          <h3 style={{ marginBottom: '20px' }}>Fluxo de Caixa</h3>
-          <ResponsiveContainer width="100%" height="90%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#323238" vertical={false} />
-              <XAxis dataKey="name" stroke="#8d8d99" />
-              <YAxis stroke="#8d8d99" />
-              <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: '#202024', borderRadius: '8px', border: '1px solid #323238' }} />
-              <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Formulário */}
-        <form onSubmit={handleAddTransaction} style={{ display: 'flex', gap: '12px', marginBottom: '40px', flexWrap: 'wrap' }}>
-          <input 
-            style={{ flex: 2, minWidth: '200px', padding: '14px', background: '#121214', border: '1px solid #323238', borderRadius: '6px', color: 'white' }}
-            placeholder="Ex: Aluguel, Salário..."
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <input 
-            style={{ flex: 1, minWidth: '120px', padding: '14px', background: '#121214', border: '1px solid #323238', borderRadius: '6px', color: 'white' }}
-            type="number"
-            placeholder="R$ 0,00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
-          <select 
-            style={{ flex: 1, minWidth: '120px', padding: '14px', background: '#121214', border: '1px solid #323238', borderRadius: '6px', color: 'white' }}
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-          >
-            <option value="income">Entrada</option>
-            <option value="outcome">Saída</option>
+    <div style={{ backgroundColor: '#0a0a0a', color: '#e0e0e0', minHeight: '100vh', fontFamily: 'monospace', padding: '20px' }}>
+      <div style={{ maxWidth: '1000px', margin: 'auto' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
+          <h2 style={{ color: '#00d1b2' }}>$ SMART_GDTECH_OS</h2>
+          <select value={mesFiltro} onChange={e => setMesFiltro(Number(e.target.value))} style={{ backgroundColor: '#000', color: '#00d1b2', border: '1px solid #00d1b2', padding: '5px' }}>
+            {meses.map(m => <option key={m.n} value={m.n}>{m.nome}</option>)}
           </select>
-          <button style={{ padding: '0 25px', background: '#00b37e', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', transition: 'filter 0.2s' }}>
-            <PlusCircle size={24} />
-          </button>
-        </form>
+        </header>
 
-        {/* Tabela de Histórico */}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
-            <thead>
-              <tr style={{ color: '#8d8d99', textAlign: 'left' }}>
-                <th style={{ padding: '0 20px' }}>Descrição</th>
-                <th style={{ padding: '0 20px' }}>Valor</th>
-                <th style={{ padding: '0 20px' }}>Data</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map(t => (
-                <tr key={t.id} style={{ background: '#29292e' }}>
-                  <td style={{ padding: '16px 20px', borderRadius: '6px 0 0 6px' }}>{t.descricao}</td>
-                  <td style={{ padding: '16px 20px', color: (t.tipo?.toLowerCase().includes('entrad') || t.tipo === 'income') ? '#00b37e' : '#f75a68', fontWeight: 'bold' }}>
-                    {(t.tipo?.toLowerCase().includes('entrad') || t.tipo === 'income') ? '+ ' : '- '} 
-                    R$ {Number(t.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td style={{ padding: '16px 20px', color: '#8d8d99' }}>{new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td style={{ padding: '16px 20px', borderRadius: '0 6px 6px 0', textAlign: 'right' }}>
-                    <button onClick={() => handleDelete(t.id)} style={{ background: 'transparent', border: 'none', color: '#f75a68', cursor: 'pointer' }}>
-                      <Trash2 size={20} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* CARDS DE VALORES - AGORA SAI DO ZERO */}
+        <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+          <div style={{ flex: 1, backgroundColor: '#161616', padding: '20px', borderRadius: '10px', borderLeft: '5px solid #00d1b2' }}>
+            <small style={{ color: '#888' }}>ENTRADAS</small>
+            <h2 style={{ color: '#00d1b2', margin: '5px 0' }}>R$ {resumo.ent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
+          </div>
+          <div style={{ flex: 1, backgroundColor: '#161616', padding: '20px', borderRadius: '10px', borderLeft: '5px solid #ff3860' }}>
+            <small style={{ color: '#888' }}>SAÍDAS</small>
+            <h2 style={{ color: '#ff3860', margin: '5px 0' }}>R$ {resumo.sai.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
+          </div>
         </div>
-      </main>
+
+        {/* GRÁFICO */}
+        <div style={{ backgroundColor: '#111', padding: '20px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px', height: '220px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dadosGrafico}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                <XAxis dataKey="dia" stroke="#555" />
+                <YAxis stroke="#555" />
+                <Tooltip contentStyle={{backgroundColor:'#000', border: '1px solid #333'}} />
+                <Area type="monotone" dataKey="saldo" stroke="#00d1b2" fill="#00d1b2" fillOpacity={0.1} strokeWidth={3} />
+              </AreaChart>
+            </ResponsiveContainer>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
+          <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '12px', border: '1px solid #333' }}>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const nova = { descricao: descricao.toUpperCase(), valor: parseFloat(valor.replace(',','.')), tipo, data, categoria: tipo === 'entrada' ? 'RECEITA' : 'DIVERSOS' };
+              await supabase.from('transacoes').insert([nova]);
+              buscarDados(); setDescricao(''); setValor('');
+            }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input type="text" placeholder="DESCRIÇÃO" value={descricao} onChange={e => setDescricao(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
+              <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }}>
+                <option value="entrada">ENTRADA (+)</option>
+                <option value="saida">SAÍDA (-)</option>
+              </select>
+              <input type="text" placeholder="VALOR R$" value={valor} onChange={e => setValor(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
+              <input type="date" value={data} onChange={e => setData(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
+              <button type="submit" style={{ padding: '15px', backgroundColor: '#00d1b2', color: '#000', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>EXECUTAR ORDEM</button>
+            </form>
+          </div>
+
+          <div style={{ backgroundColor: '#161616', borderRadius: '12px', border: '1px solid #333', height: '350px', overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: '#222' }}>
+                <tr style={{ color: '#555', fontSize: '11px', textAlign: 'left' }}>
+                  <th style={{ padding: '12px' }}>DATA</th>
+                  <th>DESCRIÇÃO</th>
+                  <th style={{ textAlign: 'right', paddingRight: '20px' }}>VALOR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumo.lista.map(t => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid #222' }}>
+                    <td style={{ padding: '12px', fontSize: '11px', color: '#888' }}>{t.data.split('-').reverse().slice(0,2).join('/')}</td>
+                    <td style={{ fontSize: '13px' }}>{t.descricao}</td>
+                    <td style={{ textAlign: 'right', paddingRight: '20px', color: t.tipo === 'entrada' ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>
+                      {t.tipo === 'entrada' ? '+' : '-'} {Number(t.valor).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <footer style={{ marginTop: '50px', padding: '20px', textAlign: 'center', borderTop: '1px solid #222' }}>
+            <p style={{ color: '#555', fontSize: '12px' }}>SISTEMA SMART_GDTECH: INTELIGÊNCIA ESTRATÉGICA APLICADA ÀS SUAS FINANÇAS.</p>
+            <p style={{ color: '#333', fontSize: '10px', fontStyle: 'italic' }}>"Transformando dados brutos em decisões de alto impacto."</p>
+        </footer>
+      </div>
     </div>
   );
-}
+};
 
 export default App;
