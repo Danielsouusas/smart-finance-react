@@ -22,13 +22,21 @@ const App = () => {
   const meses = [
     { n: 1, nome: "JANEIRO" }, { n: 2, nome: "FEVEREIRO" }, { n: 3, nome: "MARÇO" },
     { n: 4, nome: "ABRIL" }, { n: 5, nome: "MAIO" }, { n: 6, nome: "JUNHO" },
-    { n: 7, nome: "JULHO" }, { n: 8, nome: "AGOSTO" }, { n: 9, nome: "SETEMBRO" },
+    { n: 7, nome: "JULHO" }, { n: 8, nome: "AGOSTO" }, { n: 9, SEALED: "SETEMBRO" },
     { n: 10, nome: "OUTUBRO" }, { n: 11, nome: "NOVEMBRO" }, { n: 12, nome: "DEZEMBRO" }
   ];
 
   const buscarDados = async () => {
     const { data: dataDb } = await supabase.from('transacoes').select('*').order('data', { ascending: true });
     if (dataDb) setTransacoes(dataDb);
+  };
+
+  // --- NOVA FUNÇÃO PARA APAGAR ---
+  const deletarTransacao = async (id) => {
+    if (window.confirm("DESEJA EXCLUIR ESTA OPERAÇÃO?")) {
+      await supabase.from('transacoes').delete().eq('id', id);
+      buscarDados();
+    }
   };
 
   useEffect(() => { if (logado) buscarDados(); }, [logado]);
@@ -50,11 +58,11 @@ const App = () => {
       else totalSaidas += v;
     });
 
-    return { 
-      ent: totalEntradas, 
-      sai: totalSaidas, 
-      saldo: totalEntradas - totalSaidas, 
-      lista: listaFiltrada 
+    return {
+      ent: totalEntradas,
+      sai: totalSaidas,
+      saldo: totalEntradas - totalSaidas,
+      lista: listaFiltrada
     };
   }, [transacoes, mesFiltro]);
 
@@ -91,13 +99,12 @@ const App = () => {
     <div style={{ backgroundColor: '#0a0a0a', color: '#e0e0e0', minHeight: '100vh', fontFamily: 'monospace', padding: '20px' }}>
       <div style={{ maxWidth: '1000px', margin: 'auto' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
-          <h2 style={{ color: '#00d1b2' }}>$ SMART_GDTECH_OS</h2>
+          <h2 style={{ color: '#00d1b2' }}>$ SISTEMA SMART_GDTECH: INTELIGÊNCIA ESTRATÉGICA APLICADA ÀS SUAS FINANÇAS.</h2>
           <select value={mesFiltro} onChange={e => setMesFiltro(Number(e.target.value))} style={{ backgroundColor: '#000', color: '#00d1b2', border: '1px solid #00d1b2', padding: '5px' }}>
             {meses.map(m => <option key={m.n} value={m.n}>{m.nome}</option>)}
           </select>
         </header>
 
-        {/* CARDS DE VALORES - AGORA SAI DO ZERO */}
         <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
           <div style={{ flex: 1, backgroundColor: '#161616', padding: '20px', borderRadius: '10px', borderLeft: '5px solid #00d1b2' }}>
             <small style={{ color: '#888' }}>ENTRADAS</small>
@@ -109,24 +116,23 @@ const App = () => {
           </div>
         </div>
 
-        {/* GRÁFICO */}
         <div style={{ backgroundColor: '#111', padding: '20px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px', height: '220px' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dadosGrafico}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="dia" stroke="#555" />
-                <YAxis stroke="#555" />
-                <Tooltip contentStyle={{backgroundColor:'#000', border: '1px solid #333'}} />
-                <Area type="monotone" dataKey="saldo" stroke="#00d1b2" fill="#00d1b2" fillOpacity={0.1} strokeWidth={3} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={dadosGrafico}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+              <XAxis dataKey="dia" stroke="#555" />
+              <YAxis stroke="#555" />
+              <Tooltip contentStyle={{ backgroundColor: '#000', border: '1px solid #333' }} />
+              <Area type="monotone" dataKey="saldo" stroke="#00d1b2" fill="#00d1b2" fillOpacity={0.1} strokeWidth={3} />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
           <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '12px', border: '1px solid #333' }}>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              const nova = { descricao: descricao.toUpperCase(), valor: parseFloat(valor.replace(',','.')), tipo, data, categoria: tipo === 'entrada' ? 'RECEITA' : 'DIVERSOS' };
+              const nova = { descricao: descricao.toUpperCase(), valor: parseFloat(valor.replace(',', '.')), tipo, data, categoria: tipo === 'entrada' ? 'RECEITA' : 'DIVERSOS' };
               await supabase.from('transacoes').insert([nova]);
               buscarDados(); setDescricao(''); setValor('');
             }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -147,16 +153,26 @@ const App = () => {
                 <tr style={{ color: '#555', fontSize: '11px', textAlign: 'left' }}>
                   <th style={{ padding: '12px' }}>DATA</th>
                   <th>DESCRIÇÃO</th>
-                  <th style={{ textAlign: 'right', paddingRight: '20px' }}>VALOR</th>
+                  <th style={{ textAlign: 'right' }}>VALOR</th>
+                  <th style={{ textAlign: 'center', width: '50px' }}>AÇÃO</th>
                 </tr>
               </thead>
               <tbody>
                 {resumo.lista.map(t => (
                   <tr key={t.id} style={{ borderBottom: '1px solid #222' }}>
-                    <td style={{ padding: '12px', fontSize: '11px', color: '#888' }}>{t.data.split('-').reverse().slice(0,2).join('/')}</td>
+                    <td style={{ padding: '12px', fontSize: '11px', color: '#888' }}>{t.data.split('-').reverse().slice(0, 2).join('/')}</td>
                     <td style={{ fontSize: '13px' }}>{t.descricao}</td>
-                    <td style={{ textAlign: 'right', paddingRight: '20px', color: t.tipo === 'entrada' ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>
+                    <td style={{ textAlign: 'right', color: t.tipo === 'entrada' ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>
                       {t.tipo === 'entrada' ? '+' : '-'} {Number(t.valor).toFixed(2)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button 
+                        onClick={() => deletarTransacao(t.id)} 
+                        style={{ background: 'none', border: 'none', color: '#ff3860', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}
+                        title="Apagar"
+                      >
+                        ×
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -166,8 +182,8 @@ const App = () => {
         </div>
 
         <footer style={{ marginTop: '50px', padding: '20px', textAlign: 'center', borderTop: '1px solid #222' }}>
-            <p style={{ color: '#555', fontSize: '12px' }}>SISTEMA SMART_GDTECH: INTELIGÊNCIA ESTRATÉGICA APLICADA ÀS SUAS FINANÇAS.</p>
-            <p style={{ color: '#333', fontSize: '10px', fontStyle: 'italic' }}>"Transformando dados brutos em decisões de alto impacto."</p>
+          <p style={{ color: '#555', fontSize: '12px' }}>SISTEMA SMART_GDTECH: INTELIGÊNCIA ESTRATÉGICA APLICADA ÀS SUAS FINANÇAS.</p>
+          <p style={{ color: '#333', fontSize: '10px', fontStyle: 'italic' }}>"Transformando dados brutos em decisões de alto impacto."</p>
         </footer>
       </div>
     </div>
