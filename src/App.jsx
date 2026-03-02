@@ -41,11 +41,8 @@ const App = () => {
   useEffect(() => { if (logado) buscarDados(); }, [logado]);
 
   const resumo = useMemo(() => {
-    const listaFiltrada = transacoes.filter(t => {
-      if (!t.data) return false;
-      const mesItem = parseInt(t.data.split('-')[1], 10);
-      return mesItem === mesFiltro;
-    });
+    // TESTE: Vamos ver TUDO sem filtrar por mês para ter certeza que o banco voltou
+    const listaFiltrada = transacoes; 
 
     let totalEntradas = 0;
     let totalSaidas = 0;
@@ -57,7 +54,7 @@ const App = () => {
     });
 
     return { ent: totalEntradas, sai: totalSaidas, saldo: totalEntradas - totalSaidas, lista: listaFiltrada };
-  }, [transacoes, mesFiltro]);
+  }, [transacoes]); // Removi o mesFiltro daqui só para testar
 
   const dadosGrafico = useMemo(() => {
     let acumulado = 0;
@@ -159,7 +156,7 @@ const App = () => {
         </div>
 
         <div style={{ backgroundColor: '#111', padding: '10px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px', height: '220px' }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={dadosGrafico}>
               <CartesianGrid strokeDasharray="3 3" stroke="#222" />
               <XAxis dataKey="dia" stroke="#555" />
