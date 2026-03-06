@@ -12,7 +12,6 @@ const App = () => {
   const [usuario, setUsuario] = useState('');
   const [senhaInput, setSenhaInput] = useState('');
   const [transacoes, setTransacoes] = useState([]);
-
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [tipo, setTipo] = useState('entrada');
@@ -41,20 +40,24 @@ const App = () => {
   useEffect(() => { if (logado) buscarDados(); }, [logado]);
 
   const resumo = useMemo(() => {
-    // TESTE: Vamos ver TUDO sem filtrar por mês para ter certeza que o banco voltou
-    const listaFiltrada = transacoes; 
+    const hoje = new Date().toISOString().split('T')[0];
+    const listaFiltrada = transacoes.filter(t => new Date(t.data).getMonth() + 1 === mesFiltro);
+    
+    let totalEntradas = 0, totalSaidas = 0;
+    let entDia = 0, saiDia = 0;
 
-    let totalEntradas = 0;
-    let totalSaidas = 0;
-
-    listaFiltrada.forEach(t => {
+    transacoes.forEach(t => {
       const v = parseFloat(t.valor) || 0;
       if (t.tipo === 'entrada') totalEntradas += v;
       else totalSaidas += v;
+      if (t.data === hoje) {
+        if (t.tipo === 'entrada') entDia += v;
+        else saiDia += v;
+      }
     });
 
-    return { ent: totalEntradas, sai: totalSaidas, saldo: totalEntradas - totalSaidas, lista: listaFiltrada };
-  }, [transacoes]); // Removi o mesFiltro daqui só para testar
+    return { ent: totalEntradas, sai: totalSaidas, saldo: totalEntradas - totalSaidas, lista: listaFiltrada, entDia, saiDia };
+  }, [transacoes, mesFiltro]);
 
   const dadosGrafico = useMemo(() => {
     let acumulado = 0;
@@ -64,20 +67,21 @@ const App = () => {
     });
   }, [resumo.lista]);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (usuario === 'daniel' && senhaInput === '4321') setLogado(true);
-    else alert("ACESSO NEGADO");
+  const enviarWhatsApp = (valorAtual, isResumo = false) => {
+    const msg = isResumo 
+      ? `📊 RESUMO DO DIA: Entradas: R$ ${resumo.entDia.toFixed(2)} | Saídas: R$ ${resumo.saiDia.toFixed(2)} | Saldo: R$ ${(resumo.entDia - resumo.saiDia).toFixed(2)}`
+      : (valorAtual >= 400 ? `🚀 META BATIDA! Hoje: R$ ${valorAtual.toFixed(2)}` : `⚠️ Meta em curso: R$ ${valorAtual.toFixed(2)} / R$ 400,00`);
+    window.open(`https://wa.me/5585992010344?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   if (!logado) {
     return (
       <div style={{ backgroundColor: '#050505', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'monospace' }}>
-        <div style={{ backgroundColor: 'rgba(20, 20, 20, 0.9)', padding: '40px', borderRadius: '20px', width: '90%', maxWidth: '350px', border: '1px solid #00d1b2', textAlign: 'center' }}>
-          <h2 style={{ color: '#00d1b2', letterSpacing: '3px' }}>SMART_GDTECH</h2>
-          <form onSubmit={handleLogin}>
-            <input type="text" placeholder="USER" onChange={(e) => setUsuario(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: '#000', color: '#00d1b2', border: '1px solid #333' }} />
-            <input type="password" placeholder="PASS" onChange={(e) => setSenhaInput(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', backgroundColor: '#000', color: '#00d1b2', border: '1px solid #333' }} />
+        <div style={{ backgroundColor: '#141414', padding: '40px', borderRadius: '20px', width: '90%', maxWidth: '350px', border: '1px solid #00d1b2', textAlign: 'center' }}>
+          <h2 style={{ color: '#00d1b2' }}>SMART_GDTECH</h2>
+          <form onSubmit={(e) => { e.preventDefault(); if(usuario === 'daniel' && senhaInput === '4321') setLogado(true); else alert('ACESSO NEGADO'); }}>
+            <input type="text" placeholder="USER" onChange={e => setUsuario(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '10px', backgroundColor: '#000', color: '#00d1b2', border: '1px solid #333' }} />
+            <input type="password" placeholder="PASS" onChange={e => setSenhaInput(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', backgroundColor: '#000', color: '#00d1b2', border: '1px solid #333' }} />
             <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#00d1b2', fontWeight: 'bold', border: 'none', color: '#000', cursor: 'pointer' }}>ACESSAR</button>
           </form>
         </div>
@@ -86,72 +90,41 @@ const App = () => {
   }
 
   return (
-    <div className="main-container">
-      {/* CSS INJETADO PARA RESPONSIVIDADE */}
+    <div style={{ backgroundColor: '#0a0a0a', color: '#e0e0e0', minHeight: '100vh', padding: '20px', fontFamily: 'monospace' }}>
       <style>{`
-        .main-container {
-          background-color: #0a0a0a;
-          color: #e0e0e0;
-          min-height: 100vh;
-          font-family: monospace;
-          padding: 20px;
-        }
-        .content-wrapper { max-width: 1000px; margin: auto; }
-        
-        /* Grid das caixas de entrada/saída */
         .cards-resumo { display: flex; gap: 15px; margin-bottom: 20px; }
-        
-        /* Grid principal Form / Tabela */
         .grid-main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
-
-        @media (max-width: 768px) {
-          .cards-resumo { flex-direction: column; }
-          .grid-main { grid-template-columns: 1fr; }
-          
-          /* Estilo da Tabela em modo Card */
-          table, thead, tbody, th, td, tr { display: block; }
-          thead { display: none; }
-          tr { 
-            background: #161616; 
-            margin-bottom: 15px; 
-            border: 1px solid #333; 
-            border-radius: 10px; 
-            padding: 10px;
-          }
-          td { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 8px 5px; 
-            border-bottom: 1px solid #222; 
-            font-size: 14px;
-          }
-          td:last-child { border: none; }
-          td::before {
-            content: attr(data-label);
-            color: #555;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 10px;
-          }
-        }
+        @media (max-width: 768px) { .cards-resumo { flex-direction: column; } .grid-main { grid-template-columns: 1fr; } }
       `}</style>
-
-      <div className="content-wrapper">
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
-          <h2 style={{ color: '#00d1b2', fontSize: '1.2rem' }}>SMART_GDTECH: INTELIGÊNCIA ESTRATÉGICA APLICADA ÀS SUAS FINANÇAS</h2>
-          <select value={mesFiltro} onChange={e => setMesFiltro(Number(e.target.value))} style={{ backgroundColor: '#000', color: '#00d1b2', border: '1px solid #00d1b2', padding: '5px' }}>
+      <div style={{ maxWidth: '1000px', margin: 'auto' }}>
+        
+        <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '20px' }}>
+          <h2 style={{ color: '#00d1b2', fontSize: '1.2rem' }}>SMART_GDTECH: INTELIGÊNCIA FINANCEIRA</h2>
+          <select value={mesFiltro} onChange={e => setMesFiltro(Number(e.target.value))} style={{ backgroundColor: '#000', color: '#00d1b2', border: '1px solid #00d1b2' }}>
             {meses.map(m => <option key={m.n} value={m.n}>{m.nome}</option>)}
           </select>
         </header>
 
+        {/* --- NOVOS COMPONENTES ADICIONADOS --- */}
+        <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: `1px solid ${resumo.entDia >= 400 ? '#00d1b2' : '#ff3860'}`, marginBottom: '20px' }}>
+           <small style={{ color: '#888' }}>META DIÁRIA (R$ 400,00)</small>
+           <h2 style={{ color: resumo.entDia >= 400 ? '#00d1b2' : '#ff3860', margin: '5px 0' }}>{resumo.entDia >= 400 ? '✅ META BATIDA!' : `EM BUSCA: R$ ${resumo.entDia.toFixed(2)}`}</h2>
+        </div>
+
+        <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '1px solid #333', marginBottom: '20px' }}>
+          <h4 style={{ margin: '0 0 10px 0', color: '#00d1b2' }}>RESUMO DO DIA</h4>
+          <p>Entradas: R$ {resumo.entDia.toFixed(2)} | Saídas: R$ {resumo.saiDia.toFixed(2)}</p>
+          <button onClick={() => enviarWhatsApp(0, true)} style={{ backgroundColor: '#25d366', border: 'none', padding: '10px', cursor: 'pointer', borderRadius: '5px' }}>ENVIAR RESUMO NO WHATSAPP</button>
+        </div>
+
         <div className="cards-resumo">
           <div style={{ flex: 1, backgroundColor: '#161616', padding: '20px', borderRadius: '10px', borderLeft: '5px solid #00d1b2' }}>
             <small style={{ color: '#888' }}>ENTRADAS</small>
-            <h2 style={{ color: '#00d1b2', margin: '5px 0' }}>R$ {resumo.ent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
+            <h2>R$ {resumo.ent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
           </div>
           <div style={{ flex: 1, backgroundColor: '#161616', padding: '20px', borderRadius: '10px', borderLeft: '5px solid #ff3860' }}>
             <small style={{ color: '#888' }}>SAÍDAS</small>
-            <h2 style={{ color: '#ff3860', margin: '5px 0' }}>R$ {resumo.sai.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
+            <h2>R$ {resumo.sai.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
           </div>
         </div>
 
@@ -162,52 +135,42 @@ const App = () => {
               <XAxis dataKey="dia" stroke="#555" />
               <YAxis stroke="#555" />
               <Tooltip contentStyle={{ backgroundColor: '#000', border: '1px solid #333' }} />
-              <Area type="monotone" dataKey="saldo" stroke="#00d1b2" fill="#00d1b2" fillOpacity={0.1} strokeWidth={3} />
+              <Area type="monotone" dataKey="saldo" stroke="#00d1b2" fill="#00d1b2" fillOpacity={0.1} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         <div className="grid-main">
-          {/* FORMULÁRIO */}
           <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '12px', border: '1px solid #333' }}>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              const nova = { descricao: descricao.toUpperCase(), valor: parseFloat(valor.replace(',', '.')), tipo, data, categoria: tipo === 'entrada' ? 'RECEITA' : 'DIVERSOS' };
-              await supabase.from('transacoes').insert([nova]);
-              buscarDados(); setDescricao(''); setValor('');
-            }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input type="text" placeholder="DESCRIÇÃO" value={descricao} onChange={e => setDescricao(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} required />
+              const val = parseFloat(valor.replace(',', '.'));
+              await supabase.from('transacoes').insert([{ descricao: descricao.toUpperCase(), valor: val, tipo, data }]);
+              await buscarDados();
+              if (tipo === 'entrada') enviarWhatsApp(resumo.entDia + val);
+              setDescricao(''); setValor('');
+            }} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <input type="text" placeholder="DESCRIÇÃO" value={descricao} onChange={e => setDescricao(e.target.value)} required style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
               <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }}>
                 <option value="entrada">ENTRADA (+)</option>
                 <option value="saida">SAÍDA (-)</option>
               </select>
-              <input type="text" placeholder="VALOR R$" value={valor} onChange={e => setValor(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} required />
-              <input type="date" value={data} onChange={e => setData(e.target.value)} style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
-              <button type="submit" style={{ padding: '15px', backgroundColor: '#00d1b2', color: '#000', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>EXECUTAR ORDEM</button>
+              <input type="text" placeholder="VALOR R$" value={valor} onChange={e => setValor(e.target.value)} required style={{ padding: '10px', backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
+              <button type="submit" style={{ padding: '12px', backgroundColor: '#00d1b2', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>EXECUTAR ORDEM</button>
             </form>
           </div>
 
-          {/* TABELA RESPONSIVA */}
           <div style={{ backgroundColor: '#161616', borderRadius: '12px', border: '1px solid #333', height: '400px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ position: 'sticky', top: 0, backgroundColor: '#222', zIndex: 10 }}>
-                <tr style={{ color: '#555', fontSize: '11px', textAlign: 'left' }}>
-                  <th style={{ padding: '12px' }}>DATA</th>
-                  <th>DESCRIÇÃO</th>
-                  <th style={{ textAlign: 'right' }}>VALOR</th>
-                  <th style={{ textAlign: 'center', width: '50px' }}>AÇÃO</th>
-                </tr>
-              </thead>
               <tbody>
-                {resumo.lista.map(t => (
+                {resumo.lista.slice().reverse().map(t => (
                   <tr key={t.id} style={{ borderBottom: '1px solid #222' }}>
-                    <td data-label="Data" style={{ padding: '12px', fontSize: '11px', color: '#888' }}>{t.data.split('-').reverse().slice(0, 2).join('/')}</td>
-                    <td data-label="Descrição" style={{ fontSize: '13px' }}>{t.descricao}</td>
-                    <td data-label="Valor" style={{ textAlign: 'right', color: t.tipo === 'entrada' ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>
+                    <td style={{ padding: '12px' }}>{t.descricao}</td>
+                    <td style={{ textAlign: 'right', color: t.tipo === 'entrada' ? '#00d1b2' : '#ff3860' }}>
                       {t.tipo === 'entrada' ? '+' : '-'} {Number(t.valor).toFixed(2)}
                     </td>
-                    <td data-label="Ação" style={{ textAlign: 'center' }}>
-                      <button onClick={() => deletarTransacao(t.id)} style={{ background: 'none', border: 'none', color: '#ff3860', cursor: 'pointer', fontWeight: 'bold', fontSize: '18px' }}>×</button>
+                    <td style={{ textAlign: 'center' }}>
+                      <button onClick={() => deletarTransacao(t.id)} style={{ background: 'none', border: 'none', color: '#ff3860', cursor: 'pointer' }}>×</button>
                     </td>
                   </tr>
                 ))}
@@ -215,10 +178,6 @@ const App = () => {
             </table>
           </div>
         </div>
-
-        <footer style={{ marginTop: '50px', padding: '20px', textAlign: 'center', borderTop: '1px solid #222' }}>
-          <p style={{ color: '#555', fontSize: '12px' }}>SISTEMA SMART_GDTECH: INTELIGÊNCIA ESTRATÉGICA APLICADA ÀS SUAS FINANÇAS.</p>
-        </footer>
       </div>
     </div>
   );
