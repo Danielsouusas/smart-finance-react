@@ -74,6 +74,7 @@ const App = () => {
   // --- CÁLCULOS E INTELIGÊNCIA ---
   const resumo = useMemo(() => {
     let totalEntradasMes = 0, totalSaidasMes = 0, entDia = 0, saiDia = 0, totalCombustivel = 0, totalMercado = 0;
+    let acumuladoEntradasAte27 = 0, acumuladoSaidasAte27 = 0, acumuladoCombustivelAte27 = 0, acumuladoMercadoAte27 = 0;
     const hoje = new Date();
     const seteDiasAtras = new Date();
     seteDiasAtras.setDate(hoje.getDate() - 7);
@@ -84,10 +85,23 @@ const App = () => {
       const mTrans = t.data ? parseInt(t.data.split('-')[1]) : 0;
       const dTrans = t.data ? new Date(t.data) : null;
       const desc = t.descricao?.toUpperCase() || "";
+      const diaNumero = t.data ? parseInt(t.data.split('-')[2]) : 0;
 
       if (mTrans === mesFiltro) {
         if (t.tipo === 'entrada') totalEntradasMes += v;
         else totalSaidasMes += v;
+        
+        // ACUMULADO ATÉ DIA 27
+        if (diaNumero <= 27) {
+          if (t.tipo === 'entrada') acumuladoEntradasAte27 += v;
+          else acumuladoSaidasAte27 += v;
+          
+          // ACUMULADO COMBUSTÍVEL E MERCADO ATÉ DIA 27
+          if (t.tipo === 'saida') {
+            if (desc.includes("GASOLINA") || desc.includes("POSTO") || desc.includes("COMBUSTIVEL")) acumuladoCombustivelAte27 += v;
+            if (desc.includes("MERCADO") || desc.includes("COMPRAS") || desc.includes("SUPERMERCADO")) acumuladoMercadoAte27 += v;
+          }
+        }
       }
       if (dFormatada === data) {
         if (t.tipo === 'entrada') entDia += v;
@@ -98,7 +112,7 @@ const App = () => {
         if (desc.includes("MERCADO") || desc.includes("COMPRAS") || desc.includes("SUPERMERCADO")) totalMercado += v;
       }
     });
-    return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado };
+    return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado, acumuladoEntradasAte27, acumuladoSaidasAte27, acumuladoCombustivelAte27, acumuladoMercadoAte27 };
   }, [transacoes, mesFiltro, data]);
 
   // --- GRÁFICO AGRUPADO POR DIA ---
@@ -142,7 +156,7 @@ const App = () => {
   // --- DASHBOARD PRINCIPAL ---
   return (
     <div style={{ backgroundColor: '#0a0a0a', color: '#e0e0e0', minHeight: '100vh', padding: '20px', fontFamily: 'monospace' }}>
-      <style>{`.grid-main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; } @media (max-width: 768px) { .grid-main { grid-template-columns: 1fr; } }`}</style>
+      <style>{`.grid-main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; } @media (max-width: 768px) { .grid-main { grid-template-columns: 1fr; } } @keyframes piscar { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } } .piscar { animation: piscar 0.5s infinite; }`}</style>
       <div style={{ maxWidth: '1000px', margin: 'auto' }}>
         
         <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '20px', alignItems: 'center' }}>
@@ -169,6 +183,22 @@ const App = () => {
             <small style={{ color: '#888' }}>🛒 MERCADO (7D)</small>
             <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.totalMercado.toFixed(2))}</h3>
           </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #9b59b6' }}>
+            <small style={{ color: '#888' }}>📥 ENTRADA (1-27)</small>
+            <h3 style={{ margin: '5px 0', color: '#9b59b6' }}>R$ {Mascarar(resumo.acumuladoEntradasAte27.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #e74c3c' }}>
+            <small style={{ color: '#888' }}>📤 SAÍDA (1-27)</small>
+            <h3 style={{ margin: '5px 0', color: '#e74c3c' }}>R$ {Mascarar(resumo.acumuladoSaidasAte27.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #f39c12' }}>
+            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (1-27)</small>
+            <h3 style={{ margin: '5px 0', color: '#f39c12' }}>R$ {Mascarar(resumo.acumuladoCombustivelAte27.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #3498db' }}>
+            <small style={{ color: '#888' }}>🛒 MERCADO (1-27)</small>
+            <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.acumuladoMercadoAte27.toFixed(2))}</h3>
+          </div>
         </div>
 
         {/* --- CARDS DE METAS --- */}
@@ -180,10 +210,13 @@ const App = () => {
               <small style={{ color: '#00d1b2', fontWeight: 'bold' }}>PROGRESSO DIÁRIO (R$ 400)</small>
               <small style={{ color: '#00d1b2' }}>{((resumo.entDia / 400) * 100).toFixed(0)}%</small>
             </div>
-            <div style={{ width: '100%', backgroundColor: '#333', height: '12px', borderRadius: '6px', margin: '10px 0', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px 0' }}>
+              <small style={{ color: '#00d1b2' }}>R$ {Mascarar(resumo.entDia.toFixed(2))}</small>
+              <small style={{ color: '#00d1b2' }}>R$ 400</small>
+            </div>
+            <div style={{ width: '100%', backgroundColor: '#333', height: '12px', borderRadius: '6px', overflow: 'hidden' }}>
               <div style={{ width: `${Math.min((resumo.entDia / 400) * 100, 100)}%`, height: '100%', backgroundColor: '#00d1b2', boxShadow: '0 0 10px #00d1b2', transition: 'width 0.5s' }} />
             </div>
-            <h2 style={{ color: '#00d1b2', margin: 0 }}>R$ {Mascarar(resumo.entDia.toFixed(2))}</h2>
           </div>
 
           {/* META MENSAL R$ 10.000 */}
@@ -198,6 +231,15 @@ const App = () => {
             <h2 style={{ color: '#00d1b2', margin: '0' }}>R$ {Mascarar(resumo.ent.toLocaleString('pt-BR'))}</h2>
           </div>
 
+          {/* METAS BATIDAS - EFEITO PISCA */}
+          {resumo.entDia >= 400 && resumo.ent >= 10000 && (
+            <div className="piscar" style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '2px solid #00ff00', textAlign: 'center', gridColumn: 'span 2' }}>
+              <h2 style={{ color: '#00ff00', margin: '10px 0', fontSize: '1.8rem', textShadow: '0 0 15px #00ff00' }}>🎉 PARABÉNS!</h2>
+              <small style={{ color: '#00ff00', fontWeight: 'bold' }}>AMBAS AS METAS FORAM ATINGIDAS!</small>
+              <p style={{ color: '#00ff00', margin: '10px 0', fontSize: '0.9rem' }}>✓ Meta Diária Batida ✓ Meta Mensal Batida</p>
+            </div>
+          )}
+        </div>
         </div>
 
         {/* --- FILTRO E WHATSAPP --- */}
@@ -210,15 +252,38 @@ const App = () => {
         </div>
 
         {/* --- GRÁFICO --- */}
-        <div style={{ backgroundColor: '#111', padding: '15px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px', height: '250px' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={dadosGrafico}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis dataKey="dia" stroke="#555" />
-              <YAxis stroke="#555" />
-              <Tooltip contentStyle={{ backgroundColor: '#000', border: '1px solid #333', color: '#fff' }} />
-              <Area type="monotone" dataKey="entrada" stroke="#00d1b2" fill="#00d1b2" fillOpacity={0.1} strokeWidth={2} />
-              <Area type="monotone" dataKey="saida" stroke="#ff3860" fill="#ff3860" fillOpacity={0.1} strokeWidth={2} />
+        <div style={{ backgroundColor: 'linear-gradient(135deg, #111 0%, #1a1a1a 100%)', padding: '25px', borderRadius: '15px', border: '1px solid #222', marginBottom: '20px', height: '350px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)' }}>
+          <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ color: '#00d1b2', margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>FLUXO DO MÊS</h3>
+            <div style={{ display: 'flex', gap: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#00d1b2', borderRadius: '2px' }}></div>
+                <small style={{ color: '#888' }}>Entradas</small>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#ff3860', borderRadius: '2px' }}></div>
+                <small style={{ color: '#888' }}>Saídas</small>
+              </div>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height="90%">
+            <AreaChart data={dadosGrafico} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#00d1b2" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#00d1b2" stopOpacity={0.05}/>
+                </linearGradient>
+                <linearGradient id="colorSaida" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ff3860" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#ff3860" stopOpacity={0.05}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
+              <XAxis dataKey="dia" stroke="#555" style={{ fontSize: '0.85rem' }} />
+              <YAxis stroke="#555" style={{ fontSize: '0.85rem' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #00d1b2', borderRadius: '8px', color: '#fff', cursor: 'pointer', boxShadow: '0 5px 15px rgba(0, 0, 0, 0.8)' }} formatter={(value) => `R$ ${value.toFixed(2)}`} />
+              <Area type="monotone" dataKey="entrada" stroke="#00d1b2" fillOpacity={1} fill="url(#colorEntrada)" strokeWidth={2.5} isAnimationActive={true} />
+              <Area type="monotone" dataKey="saida" stroke="#ff3860" fillOpacity={1} fill="url(#colorSaida)" strokeWidth={2.5} isAnimationActive={true} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -272,7 +337,6 @@ const App = () => {
           </div>
         </div>
       </div>
-    </div>
   );
   
 };
