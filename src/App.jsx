@@ -37,6 +37,48 @@ const App = () => {
     { n: 10, nome: "OUTUBRO" }, { n: 11, nome: "NOVEMBRO" }, { n: 12, nome: "DEZEMBRO" }
   ];
 
+  const normalizarTexto = (texto = '') =>
+    texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+  const ehCombustivel = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["GASOLINA", "POSTO", "COMBUSTIVEL", "ETANOL", "DIESEL"].some(item => desc.includes(item));
+  };
+
+  const ehMercado = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["MERCADO", "SUPERMERCADO", "COMPRAS", "MERCADINHO", "ATACADAO", "ASSAI"].some(item => desc.includes(item));
+  };
+
+  const parseValor = (valorBruto = 0) => {
+    if (typeof valorBruto === 'number') return valorBruto;
+
+    const texto = String(valorBruto).trim().replace(/[^\d,.-]/g, '');
+    if (!texto) return 0;
+
+    if (texto.includes(',') && texto.includes('.')) {
+      if (texto.lastIndexOf(',') > texto.lastIndexOf('.')) {
+        return Number(texto.replace(/\./g, '').replace(',', '.')) || 0;
+      }
+      return Number(texto.replace(/,/g, '')) || 0;
+    }
+
+    return Number(texto.replace(',', '.')) || 0;
+  };
+
+  const obterCategoriaTransacao = (tipo = '', descricao = '') => {
+    const tipoNormalizado = normalizarTexto(tipo);
+
+    if (tipoNormalizado.includes('ENTRADA')) return 'entrada';
+    if (tipoNormalizado.includes('COMBUST')) return 'combustivel';
+    if (tipoNormalizado.includes('MERCAD') || tipoNormalizado.includes('SUPERMERC')) return 'mercado';
+    if (tipoNormalizado.includes('SAIDA') || tipoNormalizado.includes('DESPESA')) return 'saida';
+    if (ehCombustivel(descricao)) return 'combustivel';
+    if (ehMercado(descricao)) return 'mercado';
+
+    return 'saida';
+  };
+
   // --- LÓGICA DE SESSÃO ---
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -75,55 +117,65 @@ const App = () => {
   const resumo = useMemo(() => {
     let totalEntradasMes = 0, totalSaidasMes = 0, entDia = 0, saiDia = 0, totalCombustivel = 0, totalMercado = 0;
     let acumuladoEntradasAte27 = 0, acumuladoSaidasAte27 = 0, acumuladoCombustivelAte27 = 0, acumuladoMercadoAte27 = 0;
-    const hoje = new Date();
-    const seteDiasAtras = new Date();
-    seteDiasAtras.setDate(hoje.getDate() - 7);
+    let acumuladoEntradasAte31 = 0, acumuladoSaidasAte31 = 0, acumuladoCombustivelAte31 = 0, acumuladoMercadoAte31 = 0;
 
     transacoes.forEach(t => {
-      const v = parseFloat(t.valor) || 0;
+      const v = parseValor(t.valor);
       const dFormatada = t.data ? t.data.substring(0, 10) : "";
-      const mTrans = t.data ? parseInt(t.data.split('-')[1]) : 0;
-      const dTrans = t.data ? new Date(t.data) : null;
-      const desc = t.descricao?.toUpperCase() || "";
-      const diaNumero = t.data ? parseInt(t.data.split('-')[2]) : 0;
+      const mTrans = t.data ? parseInt(t.data.split('-')[1], 10) : 0;
+      const diaNumero = t.data ? parseInt(t.data.split('-')[2], 10) : 0;
+      const categoria = obterCategoriaTransacao(t.tipo, t.descricao);
+      const isEntrada = categoria === 'entrada';
+      const isSaida = categoria === 'saida' || categoria === 'combustivel' || categoria === 'mercado';
+      const isCombustivel = categoria === 'combustivel' || ehCombustivel(t.descricao);
+      const isMercado = categoria === 'mercado' || ehMercado(t.descricao);
 
       if (mTrans === mesFiltro) {
-        if (t.tipo === 'entrada') totalEntradasMes += v;
-        else totalSaidasMes += v;
-        
-        // ACUMULADO ATÉ DIA 27
+        if (isEntrada) totalEntradasMes += v;
+        if (isSaida) totalSaidasMes += v;
+        if (isSaida && isCombustivel) totalCombustivel += v;
+        if (isSaida && isMercado) totalMercado += v;
+
         if (diaNumero <= 27) {
-          if (t.tipo === 'entrada') acumuladoEntradasAte27 += v;
-          else acumuladoSaidasAte27 += v;
-          
-          // ACUMULADO COMBUSTÍVEL E MERCADO ATÉ DIA 27
-          if (t.tipo === 'saida') {
-            if (desc.includes("GASOLINA") || desc.includes("POSTO") || desc.includes("COMBUSTIVEL")) acumuladoCombustivelAte27 += v;
-            if (desc.includes("MERCADO") || desc.includes("COMPRAS") || desc.includes("SUPERMERCADO")) acumuladoMercadoAte27 += v;
-          }
+          if (isEntrada) acumuladoEntradasAte27 += v;
+          if (isSaida) acumuladoSaidasAte27 += v;
+          if (isSaida && isCombustivel) acumuladoCombustivelAte27 += v;
+          if (isSaida && isMercado) acumuladoMercadoAte27 += v;
+        }
+
+        if (diaNumero <= 31) {
+          if (isEntrada) acumuladoEntradasAte31 += v;
+          if (isSaida) acumuladoSaidasAte31 += v;
+          if (isSaida && isCombustivel) acumuladoCombustivelAte31 += v;
+          if (isSaida && isMercado) acumuladoMercadoAte31 += v;
         }
       }
+
       if (dFormatada === data) {
-        if (t.tipo === 'entrada') entDia += v;
+        if (isEntrada) entDia += v;
         else saiDia += v;
       }
-      if (dTrans && dTrans >= seteDiasAtras && t.tipo === 'saida') {
-        if (desc.includes("GASOLINA") || desc.includes("POSTO") || desc.includes("COMBUSTIVEL")) totalCombustivel += v;
-        if (desc.includes("MERCADO") || desc.includes("COMPRAS") || desc.includes("SUPERMERCADO")) totalMercado += v;
-      }
     });
-    return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado, acumuladoEntradasAte27, acumuladoSaidasAte27, acumuladoCombustivelAte27, acumuladoMercadoAte27 };
+
+    return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado, acumuladoEntradasAte27, acumuladoSaidasAte27, acumuladoCombustivelAte27, acumuladoMercadoAte27, acumuladoEntradasAte31, acumuladoSaidasAte31, acumuladoCombustivelAte31, acumuladoMercadoAte31 };
   }, [transacoes, mesFiltro, data]);
 
   // --- GRÁFICO AGRUPADO POR DIA ---
   const dadosGrafico = useMemo(() => {
     const agrupado = {};
-    transacoes.filter(t => parseInt(t.data.split('-')[1]) === mesFiltro).forEach(t => {
-      const dia = t.data ? t.data.substring(8, 10) : "00";
-      if (!agrupado[dia]) agrupado[dia] = { dia, entrada: 0, saida: 0 };
-      const v = Number(t.valor) || 0;
-      t.tipo === 'entrada' ? agrupado[dia].entrada += v : agrupado[dia].saida += v;
-    });
+
+    transacoes
+      .filter(t => t.data && parseInt(t.data.split('-')[1], 10) === mesFiltro)
+      .forEach(t => {
+        const dia = t.data ? t.data.substring(8, 10) : "00";
+        const categoria = obterCategoriaTransacao(t.tipo, t.descricao);
+
+        if (!agrupado[dia]) agrupado[dia] = { dia, entrada: 0, saida: 0 };
+
+        const v = parseValor(t.valor);
+        categoria === 'entrada' ? agrupado[dia].entrada += v : agrupado[dia].saida += v;
+      });
+
     return Object.values(agrupado).sort((a, b) => a.dia.localeCompare(b.dia));
   }, [transacoes, mesFiltro]);
 
@@ -176,28 +228,28 @@ const App = () => {
         {/* --- CARDS DE GASTOS ESPECÍFICOS --- */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginBottom: '20px' }}>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #f39c12' }}>
-            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (7D)</small>
+            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (MÊS)</small>
             <h3 style={{ margin: '5px 0', color: '#f39c12' }}>R$ {Mascarar(resumo.totalCombustivel.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #3498db' }}>
-            <small style={{ color: '#888' }}>🛒 MERCADO (7D)</small>
+            <small style={{ color: '#888' }}>🛒 MERCADO (MÊS)</small>
             <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.totalMercado.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #9b59b6' }}>
-            <small style={{ color: '#888' }}>📥 ENTRADA (1-27)</small>
-            <h3 style={{ margin: '5px 0', color: '#9b59b6' }}>R$ {Mascarar(resumo.acumuladoEntradasAte27.toFixed(2))}</h3>
+            <small style={{ color: '#888' }}>📥 ENTRADA (1-31)</small>
+            <h3 style={{ margin: '5px 0', color: '#9b59b6' }}>R$ {Mascarar(resumo.acumuladoEntradasAte31.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #e74c3c' }}>
-            <small style={{ color: '#888' }}>📤 SAÍDA (1-27)</small>
-            <h3 style={{ margin: '5px 0', color: '#e74c3c' }}>R$ {Mascarar(resumo.acumuladoSaidasAte27.toFixed(2))}</h3>
+            <small style={{ color: '#888' }}>📤 SAÍDA (1-31)</small>
+            <h3 style={{ margin: '5px 0', color: '#e74c3c' }}>R$ {Mascarar(resumo.acumuladoSaidasAte31.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #f39c12' }}>
-            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (1-27)</small>
-            <h3 style={{ margin: '5px 0', color: '#f39c12' }}>R$ {Mascarar(resumo.acumuladoCombustivelAte27.toFixed(2))}</h3>
+            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (1-31)</small>
+            <h3 style={{ margin: '5px 0', color: '#f39c12' }}>R$ {Mascarar(resumo.acumuladoCombustivelAte31.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #3498db' }}>
-            <small style={{ color: '#888' }}>🛒 MERCADO (1-27)</small>
-            <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.acumuladoMercadoAte27.toFixed(2))}</h3>
+            <small style={{ color: '#888' }}>🛒 MERCADO (1-31)</small>
+            <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.acumuladoMercadoAte31.toFixed(2))}</h3>
           </div>
         </div>
 
@@ -208,11 +260,11 @@ const App = () => {
           <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '1px solid #00d1b2' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <small style={{ color: '#00d1b2', fontWeight: 'bold' }}>PROGRESSO DIÁRIO (R$ 400)</small>
-              <small style={{ color: '#00d1b2' }}>{((resumo.entDia / 400) * 100).toFixed(0)}%</small>
+              <small style={{ color: '#00d1b2' }}>{((resumo.entDia / 400) * 100).toFixed(0)}% - R$ {Mascarar(resumo.entDia.toFixed(2))}</small>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px 0' }}>
-              <small style={{ color: '#00d1b2' }}>R$ {Mascarar(resumo.entDia.toFixed(2))}</small>
-              <small style={{ color: '#00d1b2' }}>R$ 400</small>
+              <small style={{ color: '#00d1b2' }}>R$ {Mascarar(resumo.entDia.toFixed(2))} de R$ 400</small>
+              <small style={{ color: '#00d1b2' }}>{(resumo.entDia >= 400 ? 'META BATIDA' : `FALTAM R$ ${Math.max(0, (400 - resumo.entDia)).toFixed(2)}`)}</small>
             </div>
             <div style={{ width: '100%', backgroundColor: '#333', height: '12px', borderRadius: '6px', overflow: 'hidden' }}>
               <div style={{ width: `${Math.min((resumo.entDia / 400) * 100, 100)}%`, height: '100%', backgroundColor: '#00d1b2', boxShadow: '0 0 10px #00d1b2', transition: 'width 0.5s' }} />
@@ -266,7 +318,7 @@ const App = () => {
               </div>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height="90%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <AreaChart data={dadosGrafico} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
@@ -294,7 +346,7 @@ const App = () => {
             <h4 style={{ color: '#888', marginTop: 0 }}>NOVA OPERAÇÃO</h4>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              const val = parseFloat(valor.replace(',', '.'));
+              const val = parseValor(valor);
               await supabase.from('transacoes').insert([{ descricao: descricao.toUpperCase(), valor: val, tipo, data }]);
               await buscarDados(); setDescricao(''); setValor('');
             }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -302,6 +354,8 @@ const App = () => {
               <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '5px' }}>
                 <option value="entrada">ENTRADA (+)</option>
                 <option value="saida">SAÍDA (-)</option>
+                <option value="combustivel">COMBUSTÍVEL (⛽)</option>
+                <option value="mercado">MERCADO (🛒)</option>
               </select>
               <input type="text" placeholder="VALOR R$" value={valor} onChange={e => setValor(e.target.value)} required style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '5px' }} />
               <button type="submit" style={{ padding: '14px', backgroundColor: '#00d1b2', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '5px', color: '#000' }}>EXECUTAR</button>
@@ -324,8 +378,8 @@ const App = () => {
                   <tr key={t.id} style={{ borderBottom: '1px solid #222' }}>
                     <td style={{ padding: '12px', fontSize: '0.75rem', color: '#666' }}>{t.data ? t.data.substring(8,10)+'/'+t.data.substring(5,7) : '--'}</td>
                     <td style={{ padding: '12px' }}>{t.descricao}</td>
-                    <td style={{ textAlign: 'right', padding: '12px', color: t.tipo === 'entrada' ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>
-                      R$ {Mascarar(Number(t.valor).toFixed(2))}
+                    <td style={{ textAlign: 'right', padding: '12px', color: obterCategoriaTransacao(t.tipo, t.descricao) === 'entrada' ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>
+                      R$ {Mascarar(parseValor(t.valor).toFixed(2))}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <button onClick={() => deletarTransacao(t.id)} style={{ background: 'none', border: 'none', color: '#ff3860', cursor: 'pointer', fontSize: '1.2rem' }}>×</button>
