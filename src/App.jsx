@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURAÇÃO DO BANCO DE DADOS ---
@@ -29,6 +29,7 @@ const App = () => {
   const [data, setData] = useState(obtenerDataLocal());
   const [mesFiltro, setMesFiltro] = useState(new Date().getMonth() + 1);
   const [visivel, setVisivel] = useState(true);
+  const [mostrarPrivado, setMostrarPrivado] = useState(false);
 
   const meses = [
     { n: 1, nome: "JANEIRO" }, { n: 2, nome: "FEVEREIRO" }, { n: 3, nome: "MARÇO" },
@@ -78,6 +79,38 @@ const App = () => {
 
     return 'saida';
   };
+
+  const calcularTotaisPorMes = () => {
+    const acumulado = meses.reduce((acc, mes) => {
+      acc[mes.n] = { mes: mes.nome, numero: mes.n, entrada: 0, saida: 0 };
+      return acc;
+    }, {});
+
+    transacoes.forEach(t => {
+      const valorTransacao = parseValor(t.valor);
+      const dataTransacao = t.data ? new Date(t.data) : null;
+      const mesTransacao = dataTransacao && !isNaN(dataTransacao.getTime()) ? dataTransacao.getMonth() + 1 : 0;
+      const categoria = obterCategoriaTransacao(t.tipo, t.descricao);
+      const isEntrada = categoria === 'entrada';
+      const isSaida = categoria === 'saida' || categoria === 'combustivel' || categoria === 'mercado';
+
+      if (!acumulado[mesTransacao]) return;
+      if (isEntrada) acumulado[mesTransacao].entrada += valorTransacao;
+      if (isSaida) acumulado[mesTransacao].saida += valorTransacao;
+    });
+
+    const valores = Object.values(acumulado).sort((a, b) => a.numero - b.numero);
+    const maiorEntrada = valores.reduce((best, item) => item.entrada > best.entrada ? item : best, { mes: '', numero: 0, entrada: 0, saida: 0 });
+    const maiorSaida = valores.reduce((best, item) => item.saida > best.saida ? item : best, { mes: '', numero: 0, entrada: 0, saida: 0 });
+
+    return { valores, maiorEntrada, maiorSaida };
+  };
+
+  const totaisPorMes = useMemo(calcularTotaisPorMes, [transacoes]);
+  const mesesComDados = useMemo(
+    () => totaisPorMes.valores.filter(item => item.entrada > 0 || item.saida > 0),
+    [totaisPorMes]
+  );
 
   // --- LÓGICA DE SESSÃO ---
   useEffect(() => {
@@ -216,8 +249,11 @@ const App = () => {
             <h2 style={{ color: '#00d1b2', fontSize: '1.2rem', margin: 0 }}>SMART-GDTEC</h2>
             <small style={{ color: '#666' }}>USUÁRIO: {session.user.email}</small>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => setVisivel(!visivel)} style={{ background: 'none', border: '1px solid #00d1b2', color: '#00d1b2', cursor: 'pointer', borderRadius: '5px', padding: '5px 10px' }}>{visivel ? '👁️' : '🙈'}</button>
+            <button onClick={() => setMostrarPrivado(prev => !prev)} style={{ background: 'none', border: '1px solid #ffcc00', color: '#ffcc00', cursor: 'pointer', borderRadius: '5px', padding: '5px 10px' }}>
+              {mostrarPrivado ? 'OCULTAR RELATÓRIO' : 'RELATÓRIO PRIVADO'}
+            </button>
             <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #ff3860', color: '#ff3860', cursor: 'pointer', borderRadius: '5px', padding: '5px 10px' }}>SAIR</button>
             <select value={mesFiltro} onChange={e => setMesFiltro(Number(e.target.value))} style={{ backgroundColor: '#000', color: '#00d1b2', border: '1px solid #00d1b2' }}>
               {meses.map(m => <option key={m.n} value={m.n}>{m.nome}</option>)}
@@ -253,6 +289,53 @@ const App = () => {
           </div>
         </div>
 
+        {mostrarPrivado && (
+          <div style={{ backgroundColor: '#11131a', padding: '20px', borderRadius: '15px', border: '1px solid #444', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ color: '#ffcc00', margin: '0 0 8px', fontSize: '1.1rem' }}>Relatório Privado - Comparativo Mensal</h3>
+              </div>
+              <span style={{ color: '#bbb', fontSize: '0.9rem' }}>Acesso discreto, somente cliente</span>
+            </div>
+
+            <div style={{ marginTop: '18px', color: '#ddd', lineHeight: 1.6 }}>
+              {mesesComDados.length === 0 ? (
+                <p style={{ margin: 0, color: '#888' }}>Nenhum mês com valores registrados ainda.</p>
+              ) : (
+                mesesComDados.map(item => (
+                  <p key={item.numero} style={{ margin: '6px 0', color: '#ccc' }}>
+                    Mês de <strong>{item.mes.toLowerCase()}</strong> faz <strong style={{ color: '#00d1b2' }}>entrada R$ {item.entrada.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> e <strong style={{ color: '#ff3860' }}>saída R$ {item.saida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>.
+                  </p>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '18px' }}>
+              {mesesComDados.map(item => (
+                <div key={item.numero} style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '12px', border: '1px solid #333' }}>
+                  <strong style={{ display: 'block', color: '#fff', marginBottom: '8px' }}>{item.mes}</strong>
+                  <p style={{ margin: '0 0 6px', color: '#00d1b2' }}>Entrada: R$ {item.entrada.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <p style={{ margin: 0, color: '#ff3860' }}>Saída: R$ {item.saida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '22px', height: '300px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={mesesComDados} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+                  <XAxis dataKey="mes" stroke="#888" style={{ fontSize: '0.8rem' }} />
+                  <YAxis stroke="#888" style={{ fontSize: '0.8rem' }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #ffcc00', borderRadius: '8px', color: '#fff' }} formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                  <Legend wrapperStyle={{ color: '#ccc', fontSize: '0.9rem' }} />
+                  <Bar dataKey="entrada" name="Entrada" fill="#00d1b2" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="saida" name="Saída" fill="#ff3860" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
         {/* --- CARDS DE METAS --- */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
           
@@ -260,7 +343,11 @@ const App = () => {
           <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '1px solid #00d1b2' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <small style={{ color: '#00d1b2', fontWeight: 'bold' }}>PROGRESSO DIÁRIO (R$ 400)</small>
-              <small style={{ color: '#00d1b2' }}>{((resumo.entDia / 400) * 100).toFixed(0)}% - R$ {Mascarar(resumo.entDia.toFixed(2))}</small>
+              <small style={{ color: '#00d1b2' }}>{((resumo.entDia / 400) * 100).toFixed(0)}%</small>
+            </div>
+            <div style={{ margin: '10px 0' }}>
+              <p style={{ margin: '0 0 5px', color: '#e0e0e0', fontSize: '1rem' }}>Entrada diária</p>
+              <h2 style={{ color: '#00d1b2', margin: 0 }}>R$ {Mascarar(resumo.entDia.toFixed(2))}</h2>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '10px 0' }}>
               <small style={{ color: '#00d1b2' }}>R$ {Mascarar(resumo.entDia.toFixed(2))} de R$ 400</small>
@@ -274,24 +361,23 @@ const App = () => {
           {/* META MENSAL R$ 10.000 */}
           <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '1px solid #00d1b2' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <small style={{ color: '#00d1b2', fontWeight: 'bold' }}>META MENSAL (R$ 10.000)</small>
-              <small style={{ color: '#00d1b2' }}>{((resumo.ent / 10000) * 100).toFixed(1)}%</small>
+              <small style={{ color: '#00d1b2', fontWeight: 'bold' }}>META MENSAL (R$ 12.000)</small>
+              <small style={{ color: '#00d1b2' }}>{((resumo.ent / 12000) * 100).toFixed(1)}%</small>
             </div>
             <div style={{ width: '100%', backgroundColor: '#333', height: '12px', borderRadius: '6px', margin: '10px 0', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min((resumo.ent / 10000) * 100, 100)}%`, height: '100%', backgroundColor: '#00d1b2', boxShadow: '0 0 10px #00d1b2', transition: 'width 0.5s' }} />
+              <div style={{ width: `${Math.min((resumo.ent / 12000) * 100, 100)}%`, height: '100%', backgroundColor: '#00d1b2', boxShadow: '0 0 10px #00d1b2', transition: 'width 0.5s' }} />
             </div>
             <h2 style={{ color: '#00d1b2', margin: '0' }}>R$ {Mascarar(resumo.ent.toLocaleString('pt-BR'))}</h2>
           </div>
 
           {/* METAS BATIDAS - EFEITO PISCA */}
-          {resumo.entDia >= 400 && resumo.ent >= 10000 && (
+          {resumo.entDia >= 400 && resumo.ent >= 12000 && (
             <div className="piscar" style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '2px solid #00ff00', textAlign: 'center', gridColumn: 'span 2' }}>
               <h2 style={{ color: '#00ff00', margin: '10px 0', fontSize: '1.8rem', textShadow: '0 0 15px #00ff00' }}>🎉 PARABÉNS!</h2>
               <small style={{ color: '#00ff00', fontWeight: 'bold' }}>AMBAS AS METAS FORAM ATINGIDAS!</small>
               <p style={{ color: '#00ff00', margin: '10px 0', fontSize: '0.9rem' }}>✓ Meta Diária Batida ✓ Meta Mensal Batida</p>
             </div>
           )}
-        </div>
         </div>
 
         {/* --- FILTRO E WHATSAPP --- */}
@@ -391,6 +477,7 @@ const App = () => {
           </div>
         </div>
       </div>
+    </div>
   );
   
 };
