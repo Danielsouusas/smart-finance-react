@@ -51,6 +51,31 @@ const App = () => {
     return ["MERCADO", "SUPERMERCADO", "COMPRAS", "MERCADINHO", "ATACADAO", "ASSAI"].some(item => desc.includes(item));
   };
 
+  const ehLazer = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["CINEMA", "RESTAURANTE", "PIZZA", "BAR", "LAZER", "DIVERSAO", "JOGO", "SHOW", "EVENTO"].some(item => desc.includes(item));
+  };
+
+  const ehAluguel = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["ALUGUEL", "ALUGA"].some(item => desc.includes(item));
+  };
+
+  const ehLuz = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["ENERGIA", "LUZ", "ELETRICIDADE", "ELETRICA"].some(item => desc.includes(item));
+  };
+
+  const ehAgua = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["AGUA", "SANEAMENTO", "HIDRICA"].some(item => desc.includes(item));
+  };
+
+  const ehDiversos = (descricao = '') => {
+    const desc = normalizarTexto(descricao);
+    return ["DIVERSOS", "OUTROS", "MISC", "OUTROS GASTOS"].some(item => desc.includes(item));
+  };
+
   const parseValor = (valorBruto = 0) => {
     if (typeof valorBruto === 'number') return valorBruto;
 
@@ -73,9 +98,19 @@ const App = () => {
     if (tipoNormalizado.includes('ENTRADA')) return 'entrada';
     if (tipoNormalizado.includes('COMBUST')) return 'combustivel';
     if (tipoNormalizado.includes('MERCAD') || tipoNormalizado.includes('SUPERMERC')) return 'mercado';
+    if (tipoNormalizado.includes('LAZER')) return 'lazer';
+    if (tipoNormalizado.includes('ALUGUEL')) return 'aluguel';
+    if (tipoNormalizado.includes('LUZ')) return 'luz';
+    if (tipoNormalizado.includes('AGUA')) return 'agua';
+    if (tipoNormalizado.includes('DIVERSO')) return 'diversos';
     if (tipoNormalizado.includes('SAIDA') || tipoNormalizado.includes('DESPESA')) return 'saida';
     if (ehCombustivel(descricao)) return 'combustivel';
     if (ehMercado(descricao)) return 'mercado';
+    if (ehLazer(descricao)) return 'lazer';
+    if (ehAluguel(descricao)) return 'aluguel';
+    if (ehLuz(descricao)) return 'luz';
+    if (ehAgua(descricao)) return 'agua';
+    if (ehDiversos(descricao)) return 'diversos';
 
     return 'saida';
   };
@@ -149,6 +184,7 @@ const App = () => {
   // --- CÁLCULOS E INTELIGÊNCIA ---
   const resumo = useMemo(() => {
     let totalEntradasMes = 0, totalSaidasMes = 0, entDia = 0, saiDia = 0, totalCombustivel = 0, totalMercado = 0;
+    let totalLazer = 0, totalAluguel = 0, totalLuz = 0, totalAgua = 0, totalDiversos = 0;
     let acumuladoEntradasAte27 = 0, acumuladoSaidasAte27 = 0, acumuladoCombustivelAte27 = 0, acumuladoMercadoAte27 = 0;
     let acumuladoEntradasAte31 = 0, acumuladoSaidasAte31 = 0, acumuladoCombustivelAte31 = 0, acumuladoMercadoAte31 = 0;
 
@@ -159,28 +195,38 @@ const App = () => {
       const diaNumero = t.data ? parseInt(t.data.split('-')[2], 10) : 0;
       const categoria = obterCategoriaTransacao(t.tipo, t.descricao);
       const isEntrada = categoria === 'entrada';
-      const isSaida = categoria === 'saida' || categoria === 'combustivel' || categoria === 'mercado';
+      const isSaida = categoria !== 'entrada';
       const isCombustivel = categoria === 'combustivel' || ehCombustivel(t.descricao);
       const isMercado = categoria === 'mercado' || ehMercado(t.descricao);
+      const isLazer = categoria === 'lazer';
+      const isAluguel = categoria === 'aluguel';
+      const isLuz = categoria === 'luz';
+      const isAgua = categoria === 'agua';
+      const isDiversos = categoria === 'diversos';
 
       if (mTrans === mesFiltro) {
         if (isEntrada) totalEntradasMes += v;
         if (isSaida) totalSaidasMes += v;
-        if (isSaida && isCombustivel) totalCombustivel += v;
-        if (isSaida && isMercado) totalMercado += v;
+        if (isCombustivel) totalCombustivel += v;
+        if (isMercado) totalMercado += v;
+        if (isLazer) totalLazer += v;
+        if (isAluguel) totalAluguel += v;
+        if (isLuz) totalLuz += v;
+        if (isAgua) totalAgua += v;
+        if (isDiversos) totalDiversos += v;
 
         if (diaNumero <= 27) {
           if (isEntrada) acumuladoEntradasAte27 += v;
           if (isSaida) acumuladoSaidasAte27 += v;
-          if (isSaida && isCombustivel) acumuladoCombustivelAte27 += v;
-          if (isSaida && isMercado) acumuladoMercadoAte27 += v;
+          if (isCombustivel) acumuladoCombustivelAte27 += v;
+          if (isMercado) acumuladoMercadoAte27 += v;
         }
 
         if (diaNumero <= 31) {
           if (isEntrada) acumuladoEntradasAte31 += v;
           if (isSaida) acumuladoSaidasAte31 += v;
-          if (isSaida && isCombustivel) acumuladoCombustivelAte31 += v;
-          if (isSaida && isMercado) acumuladoMercadoAte31 += v;
+          if (isCombustivel) acumuladoCombustivelAte31 += v;
+          if (isMercado) acumuladoMercadoAte31 += v;
         }
       }
 
@@ -190,7 +236,7 @@ const App = () => {
       }
     });
 
-    return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado, acumuladoEntradasAte27, acumuladoSaidasAte27, acumuladoCombustivelAte27, acumuladoMercadoAte27, acumuladoEntradasAte31, acumuladoSaidasAte31, acumuladoCombustivelAte31, acumuladoMercadoAte31 };
+    return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado, totalLazer, totalAluguel, totalLuz, totalAgua, totalDiversos, acumuladoEntradasAte27, acumuladoSaidasAte27, acumuladoCombustivelAte27, acumuladoMercadoAte27, acumuladoEntradasAte31, acumuladoSaidasAte31, acumuladoCombustivelAte31, acumuladoMercadoAte31 };
   }, [transacoes, mesFiltro, data]);
 
   // --- GRÁFICO AGRUPADO POR DIA ---
@@ -219,6 +265,24 @@ const App = () => {
   };
 
   const Mascarar = (v) => visivel ? v : "****";
+
+  const metaMensal = 12000;
+  const analiseMensal = useMemo(() => {
+    const hoje = new Date();
+    const diaHoje = hoje.getDate();
+    const diasNoMes = new Date(hoje.getFullYear(), mesFiltro, 0).getDate();
+    const esperado = diasNoMes ? (metaMensal / diasNoMes) * diaHoje : 0;
+    const atual = resumo.ent;
+    const percentual = esperado ? (atual / esperado) * 100 : 0;
+    const pct = Number(percentual.toFixed(1));
+    const gap = Number(Math.abs(100 - percentual).toFixed(1));
+    let status = 'ABAIXO da média';
+    if (percentual >= 100) status = `ACIMA da média (+${gap}%)`;
+    else if (percentual >= 90) status = `NA MÉDIA (${pct}%)`;
+    const proximoCheckpoint = [10, 20, 30].find(d => d > diaHoje) ?? 30;
+    const aviso = [10, 20, 30].includes(diaHoje) ? `AVALIAÇÃO DIA ${diaHoje}` : `Próxima avaliação: dia ${proximoCheckpoint}`;
+    return { diaHoje, esperado, entrado: atual, percentual: pct, status, aviso };
+  }, [resumo.ent, mesFiltro]);
 
   // --- TELA DE LOGIN ---
   if (!session) {
@@ -251,8 +315,8 @@ const App = () => {
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={() => setVisivel(!visivel)} style={{ background: 'none', border: '1px solid #00d1b2', color: '#00d1b2', cursor: 'pointer', borderRadius: '5px', padding: '5px 10px' }}>{visivel ? '👁️' : '🙈'}</button>
-            <button onClick={() => setMostrarPrivado(prev => !prev)} style={{ background: 'none', border: '1px solid #ffcc00', color: '#ffcc00', cursor: 'pointer', borderRadius: '5px', padding: '5px 10px' }}>
-              {mostrarPrivado ? 'OCULTAR RELATÓRIO' : 'RELATÓRIO PRIVADO'}
+            <button onClick={() => setMostrarPrivado(prev => !prev)} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', borderRadius: '5px', padding: '5px 8px', fontSize: '0.8rem', textDecoration: 'underline dotted' }}>
+              {mostrarPrivado ? '◄ ocultar' : 'relatório'}
             </button>
             <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #ff3860', color: '#ff3860', cursor: 'pointer', borderRadius: '5px', padding: '5px 10px' }}>SAIR</button>
             <select value={mesFiltro} onChange={e => setMesFiltro(Number(e.target.value))} style={{ backgroundColor: '#000', color: '#00d1b2', border: '1px solid #00d1b2' }}>
@@ -264,28 +328,40 @@ const App = () => {
         {/* --- CARDS DE GASTOS ESPECÍFICOS --- */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginBottom: '20px' }}>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #f39c12' }}>
-            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (MÊS)</small>
+            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL</small>
             <h3 style={{ margin: '5px 0', color: '#f39c12' }}>R$ {Mascarar(resumo.totalCombustivel.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #3498db' }}>
-            <small style={{ color: '#888' }}>🛒 MERCADO (MÊS)</small>
+            <small style={{ color: '#888' }}>🛒 MERCADO</small>
             <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.totalMercado.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #9b59b6' }}>
-            <small style={{ color: '#888' }}>📥 ENTRADA (1-31)</small>
+            <small style={{ color: '#888' }}>🎬 LAZER</small>
+            <h3 style={{ margin: '5px 0', color: '#9b59b6' }}>R$ {Mascarar(resumo.totalLazer.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #9edae4' }}>
+            <small style={{ color: '#888' }}>🏠 ALUGUEL</small>
+            <h3 style={{ margin: '5px 0', color: '#9edae4' }}>R$ {Mascarar(resumo.totalAluguel.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #f1c40f' }}>
+            <small style={{ color: '#888' }}>💡 LUZ</small>
+            <h3 style={{ margin: '5px 0', color: '#f1c40f' }}>R$ {Mascarar(resumo.totalLuz.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #3498db' }}>
+            <small style={{ color: '#888' }}>💧 ÁGUA</small>
+            <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.totalAgua.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #7f8c8d' }}>
+            <small style={{ color: '#888' }}>... DIVERSOS</small>
+            <h3 style={{ margin: '5px 0', color: '#7f8c8d' }}>R$ {Mascarar(resumo.totalDiversos.toFixed(2))}</h3>
+          </div>
+          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #9b59b6' }}>
+            <small style={{ color: '#888' }}>📥 ENTRADA</small>
             <h3 style={{ margin: '5px 0', color: '#9b59b6' }}>R$ {Mascarar(resumo.acumuladoEntradasAte31.toFixed(2))}</h3>
           </div>
           <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #e74c3c' }}>
-            <small style={{ color: '#888' }}>📤 SAÍDA (1-31)</small>
+            <small style={{ color: '#888' }}>📤 SAÍDA</small>
             <h3 style={{ margin: '5px 0', color: '#e74c3c' }}>R$ {Mascarar(resumo.acumuladoSaidasAte31.toFixed(2))}</h3>
-          </div>
-          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #f39c12' }}>
-            <small style={{ color: '#888' }}>⛽ COMBUSTÍVEL (1-31)</small>
-            <h3 style={{ margin: '5px 0', color: '#f39c12' }}>R$ {Mascarar(resumo.acumuladoCombustivelAte31.toFixed(2))}</h3>
-          </div>
-          <div style={{ backgroundColor: '#161616', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #3498db' }}>
-            <small style={{ color: '#888' }}>🛒 MERCADO (1-31)</small>
-            <h3 style={{ margin: '5px 0', color: '#3498db' }}>R$ {Mascarar(resumo.acumuladoMercadoAte31.toFixed(2))}</h3>
           </div>
         </div>
 
@@ -370,6 +446,23 @@ const App = () => {
             <h2 style={{ color: '#00d1b2', margin: '0' }}>R$ {Mascarar(resumo.ent.toLocaleString('pt-BR'))}</h2>
           </div>
 
+          <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '1px solid #00d1b2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <small style={{ color: '#00d1b2', fontWeight: 'bold' }}>CHECK MENSAL</small>
+              <small style={{ color: '#00d1b2' }}>{analiseMensal.aviso}</small>
+            </div>
+            <div style={{ margin: '10px 0' }}>
+              <p style={{ margin: '0 0 5px', color: '#e0e0e0', fontSize: '1rem' }}>Entrada acumulada</p>
+              <h2 style={{ color: '#00d1b2', margin: 0 }}>R$ {Mascarar(analiseMensal.entrado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</h2>
+            </div>
+            <p style={{ color: analiseMensal.percentual >= 100 ? '#2ecc71' : analiseMensal.percentual >= 90 ? '#f1c40f' : '#e74c3c', margin: '0 0 8px' }}>
+              {analiseMensal.status}
+            </p>
+            <small style={{ color: '#bbb' }}>
+              Esperado até hoje: R$ {analiseMensal.esperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({analiseMensal.percentual.toFixed(1)}% do esperado).
+            </small>
+          </div>
+
           {/* METAS BATIDAS - EFEITO PISCA */}
           {resumo.entDia >= 400 && resumo.ent >= 12000 && (
             <div className="piscar" style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '2px solid #00ff00', textAlign: 'center', gridColumn: 'span 2' }}>
@@ -442,6 +535,11 @@ const App = () => {
                 <option value="saida">SAÍDA (-)</option>
                 <option value="combustivel">COMBUSTÍVEL (⛽)</option>
                 <option value="mercado">MERCADO (🛒)</option>
+                <option value="lazer">LAZER (🎬)</option>
+                <option value="aluguel">ALUGUEL (🏠)</option>
+                <option value="luz">LUZ (💡)</option>
+                <option value="agua">ÁGUA (💧)</option>
+                <option value="diversos">DIVERSOS (...)</option>
               </select>
               <input type="text" placeholder="VALOR R$" value={valor} onChange={e => setValor(e.target.value)} required style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '5px' }} />
               <button type="submit" style={{ padding: '14px', backgroundColor: '#00d1b2', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '5px', color: '#000' }}>EXECUTAR</button>
