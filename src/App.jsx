@@ -146,6 +146,11 @@ const App = () => {
     processarRelatorioIA(promptIA);
   };
 
+  const limparRelatorioIA = () => {
+    setRespostaIA('');
+    setPromptIA('');
+  };
+
   const ehCombustivel = (descricao = '') => {
     const desc = normalizarTexto(descricao);
     return ["GASOLINA", "POSTO", "COMBUSTIVEL", "ETANOL", "DIESEL"].some(item => desc.includes(item));
@@ -471,6 +476,9 @@ const App = () => {
                 processarRelatorioIA(texto);
               }} style={{ flex: '1 1 160px', minWidth: '160px', padding: '12px', backgroundColor: '#2563eb', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#fff', fontWeight: 'bold' }}>
                 RELATÓRIO MENSAL
+              </button>
+              <button type="button" onClick={limparRelatorioIA} style={{ flex: '1 1 160px', minWidth: '160px', padding: '12px', backgroundColor: '#ff3860', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#fff', fontWeight: 'bold' }}>
+                LIMPAR RELATÓRIO
               </button>
             </div>
             <button type="submit" disabled={carregandoIA} style={{ padding: '12px', backgroundColor: '#2f6fed', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#fff', fontWeight: 'bold' }}>
