@@ -117,18 +117,24 @@ const App = () => {
         ? 'vendidos'
         : 'registrados';
 
-    const linhas = itens.map(item => `- ${item.rotulo}: ${item.quantidade} ${verbo} em ${item.transacoes} transação(ões) | total R$ ${item.valorTotal.toFixed(2)}`);
+    const formatarReal = (numero) =>
+      numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const linhas = itens.map(item => {
+      const quantidade = item.quantidade;
+      const total = formatarReal(item.valorTotal);
+      return `- ${item.rotulo}: ${quantidade} ${verbo} | Total em valor: R$ ${total}`;
+    });
 
     const valorTotalGeral = itens.reduce((soma, item) => soma + item.valorTotal, 0);
     const quantidadeTotal = itens.reduce((soma, item) => soma + item.quantidade, 0);
-    const transacoesEncontradas = transacoesFiltradas.length;
 
     const resposta = itens.length > 0
       ? `RELATÓRIO PROFISSIONAL - ${periodoLabel.toUpperCase()}\n` +
         `────────────────────────────────────────\n` +
         `${linhas.join('\n')}\n` +
         `────────────────────────────────────────\n` +
-        `Total itens: ${quantidadeTotal} | Total transações: ${transacoesEncontradas} | Valor total: R$ ${valorTotalGeral.toFixed(2)}`
+        `Totais: ${quantidadeTotal} itens | Valor total: R$ ${formatarReal(valorTotalGeral)}`
       : 'Nenhum item encontrado com os termos informados. Tente usar palavras como cabo, película, bateria ou tela de iphone e verifique o ano ou mês selecionado.';
 
     setRespostaIA(resposta);
