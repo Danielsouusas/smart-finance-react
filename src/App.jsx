@@ -73,24 +73,48 @@ const App = () => {
     if (txt.includes('ANO LETIVO') || txt.includes('ANUAL') || txt.includes('ANO')) return { tipo: 'ano', ano: anoRelatorio };
     if (txt.includes('HOJE') || txt.includes('DIA')) return { tipo: 'dia', data: data };
     if (txt.includes('TODOS') || txt.includes('GERAL') || txt.includes('COMPLETO') || txt.includes('TUDO')) return { tipo: 'todos' };
-    return { tipo: 'mes', mes: mesFiltro };
+    return { tipo: 'mes', mes: mesFiltro, ano: anoRelatorio };
+  };
+
+  const calcularPeriodoAnterior = (periodo) => {
+    if (periodo.tipo === 'mes') {
+      const mesAnterior = periodo.mes === 1 ? 12 : periodo.mes - 1;
+      const anoAnterior = periodo.mes === 1 ? periodo.ano - 1 : periodo.ano;
+      return { tipo: 'mes', mes: mesAnterior, ano: anoAnterior };
+    }
+    if (periodo.tipo === 'ano') {
+      return { tipo: 'ano', ano: periodo.ano - 1 };
+    }
+    if (periodo.tipo === 'dia') {
+      const dataObj = new Date(periodo.data);
+      dataObj.setDate(dataObj.getDate() - 1);
+      const ano = dataObj.getFullYear();
+      const mes = String(dataObj.getMonth() + 1).padStart(2, '0');
+      const dia = String(dataObj.getDate()).padStart(2, '0');
+      return { tipo: 'dia', data: `${ano}-${mes}-${dia}` };
+    }
+    return { tipo: 'todos' };
+  };
+
+  const filtrarPeriodo = (t, periodo) => {
+    if (!t.data) return false;
+    const [ano, mes, dia] = t.data.split('-');
+    if (periodo.tipo === 'todos') return true;
+    if (periodo.tipo === 'dia') return `${ano}-${mes}-${dia}` === periodo.data;
+    if (periodo.tipo === 'mes') return Number(mes) === periodo.mes && Number(ano) === periodo.ano;
+    if (periodo.tipo === 'ano') return Number(ano) === periodo.ano;
+    return false;
   };
 
   const processarRelatorioIA = (textoPrompt) => {
     setCarregandoIA(true);
 
     const periodo = extrairPeriodoRelatorio(textoPrompt);
+    const periodoAnterior = calcularPeriodoAnterior(periodo);
     const categoriasSolicitadas = extrairCategoriasIA(textoPrompt);
 
-    const transacoesFiltradas = transacoes.filter(t => {
-      if (!t.data) return false;
-      const [ano, mes, dia] = t.data.split('-');
-      if (periodo.tipo === 'todos') return true;
-      if (periodo.tipo === 'dia') return `${ano}-${mes}-${dia}` === data;
-      if (periodo.tipo === 'mes') return Number(mes) === periodo.mes;
-      if (periodo.tipo === 'ano') return Number(ano) === periodo.ano;
-      return true;
-    });
+    const transacoesFiltradas = transacoes.filter(t => filtrarPeriodo(t, periodo));
+    const transacoesAnterior = transacoes.filter(t => filtrarPeriodo(t, periodoAnterior));
 
     const periodoLabel = periodo.tipo === 'todos'
       ? 'todos os meses'
@@ -99,6 +123,14 @@ const App = () => {
         : periodo.tipo === 'ano'
           ? `ano letivo ${periodo.ano}`
           : `mês ${meses.find(item => item.n === periodo.mes)?.nome?.toLowerCase() || mesFiltro}`;
+
+    const periodoAnteriorLabel = periodoAnterior.tipo === 'todos'
+      ? 'todos os meses anteriores'
+      : periodoAnterior.tipo === 'dia'
+        ? `dia ${periodoAnterior.data.split('-').reverse().join('/')}`
+        : periodoAnterior.tipo === 'ano'
+          ? `ano letivo ${periodoAnterior.ano}`
+          : `mês ${meses.find(item => item.n === periodoAnterior.mes)?.nome?.toLowerCase()}`;
 
     const itens = categoriasSolicitadas.map(categoria => {
       const correspondencias = transacoesFiltradas.filter(t => {
@@ -111,6 +143,25 @@ const App = () => {
       return { ...categoria, quantidade, valorTotal, transacoes: correspondencias.length };
     }).filter(item => item.quantidade > 0 || categoriasSolicitadas.length === categoriasIA.length);
 
+    const valoresAnterior = categoriasSolicitadas.map(categoria => {
+      const correspondencias = transacoesAnterior.filter(t => {
+        const descricaoNormalizada = normalizarTexto(t.descricao || '');
+        return categoria.aliases.some(alias => descricaoNormalizada.includes(alias));
+      });
+      return {
+        categoria: categoria.rotulo,
+        quantidade: correspondencias.reduce((soma, item) => soma + extrairQuantidadeDescricao(item.descricao), 0),
+        valorTotal: correspondencias.reduce((soma, item) => soma + parseValor(item.valor), 0)
+      };
+    });
+
+    const valorTotalGeral = itens.reduce((soma, item) => soma + item.valorTotal, 0);
+    const quantidadeTotal = itens.reduce((soma, item) => soma + item.quantidade, 0);
+    const valorTotalAnterior = valoresAnterior.reduce((soma, item) => soma + item.valorTotal, 0);
+    const quantidadeTotalAnterior = valoresAnterior.reduce((soma, item) => soma + item.quantidade, 0);
+    const percentualValor = valorTotalAnterior === 0 ? null : ((valorTotalGeral - valorTotalAnterior) / valorTotalAnterior) * 100;
+    const percentualQuantidade = quantidadeTotalAnterior === 0 ? null : ((quantidadeTotal - quantidadeTotalAnterior) / quantidadeTotalAnterior) * 100;
+
     const verbo = textoPrompt.toLowerCase().includes('troca') || textoPrompt.toLowerCase().includes('troc')
       ? 'trocados'
       : textoPrompt.toLowerCase().includes('vend')
@@ -120,21 +171,27 @@ const App = () => {
     const formatarReal = (numero) =>
       numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+    const formatarPercentual = (numero) => `${numero >= 0 ? '+' : ''}${numero.toFixed(1)}%`;
+
     const linhas = itens.map(item => {
       const quantidade = item.quantidade;
       const total = formatarReal(item.valorTotal);
       return `- ${item.rotulo}: ${quantidade} ${verbo} | Total em valor: R$ ${total}`;
     });
 
-    const valorTotalGeral = itens.reduce((soma, item) => soma + item.valorTotal, 0);
-    const quantidadeTotal = itens.reduce((soma, item) => soma + item.quantidade, 0);
+    const comparativo = valorTotalAnterior || quantidadeTotalAnterior
+      ? `Comparativo com ${periodoAnteriorLabel}: ${quantidadeTotalAnterior} itens | Valor anterior: R$ ${formatarReal(valorTotalAnterior)} | ` +
+        `Variação quantidade: ${quantidadeTotalAnterior === 0 ? 'N/A' : formatarPercentual(percentualQuantidade)} | ` +
+        `Variação valor: ${valorTotalAnterior === 0 ? 'N/A' : formatarPercentual(percentualValor)}`
+      : `Sem dados do período anterior (${periodoAnteriorLabel}) para comparação.`;
 
     const resposta = itens.length > 0
       ? `RELATÓRIO PROFISSIONAL - ${periodoLabel.toUpperCase()}\n` +
         `────────────────────────────────────────\n` +
         `${linhas.join('\n')}\n` +
         `────────────────────────────────────────\n` +
-        `Totais: ${quantidadeTotal} itens | Valor total: R$ ${formatarReal(valorTotalGeral)}`
+        `Totais: ${quantidadeTotal} itens | Valor total: R$ ${formatarReal(valorTotalGeral)}\n` +
+        `Comparativo anterior: ${comparativo}`
       : 'Nenhum item encontrado com os termos informados. Tente usar palavras como cabo, película, bateria ou tela de iphone e verifique o ano ou mês selecionado.';
 
     setRespostaIA(resposta);
