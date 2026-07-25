@@ -28,8 +28,14 @@ const App = () => {
 
   const [data, setData] = useState(obtenerDataLocal());
   const [mesFiltro, setMesFiltro] = useState(new Date().getMonth() + 1);
+  const [anoRelatorio, setAnoRelatorio] = useState(new Date().getFullYear());
   const [visivel, setVisivel] = useState(true);
   const [mostrarPrivado, setMostrarPrivado] = useState(false);
+  const [promptIA, setPromptIA] = useState('faça um relatório de cabos, películas, baterias e telas de iphone');
+  const [respostaIA, setRespostaIA] = useState('');
+  const [carregandoIA, setCarregandoIA] = useState(false);
+
+  const anosDisponiveis = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 3 + i);
 
   const meses = [
     { n: 1, nome: "JANEIRO" }, { n: 2, nome: "FEVEREIRO" }, { n: 3, nome: "MARÇO" },
@@ -40,6 +46,99 @@ const App = () => {
 
   const normalizarTexto = (texto = '') =>
     texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+  const categoriasIA = [
+    { chave: 'cabo', rotulo: 'CABOS', aliases: ['CABO', 'CABOS', 'CABLE', 'CABLES'] },
+    { chave: 'pelicula', rotulo: 'PELÍCULAS', aliases: ['PELICULA', 'PELICULAS', 'PELÍCULA', 'PELÍCULAS', 'FILME', 'FILMES'] },
+    { chave: 'bateria', rotulo: 'BATERIAS', aliases: ['BATERIA', 'BATERIAS', 'BATTERY'] },
+    { chave: 'tela', rotulo: 'TELAS DE IPHONE', aliases: ['TELA', 'TELAS', 'TELA IPHONE', 'TELA DE IPHONE', 'DISPLAY', 'IPHONE'] }
+  ];
+
+  const extrairCategoriasIA = (texto = '') => {
+    const textoNormalizado = normalizarTexto(texto);
+    const categoriasEncontradas = categoriasIA.filter(item =>
+      item.aliases.some(alias => textoNormalizado.includes(alias))
+    );
+    return categoriasEncontradas.length > 0 ? categoriasEncontradas : categoriasIA;
+  };
+
+  const extrairQuantidadeDescricao = (descricao = '') => {
+    const texto = normalizarTexto(descricao);
+    const match = texto.match(/(\d+)\s*(?:x|×)?\s*/);
+    return match ? Number(match[1]) || 1 : 1;
+  };
+
+  const extrairPeriodoRelatorio = (texto = '') => {
+    const txt = normalizarTexto(texto);
+    if (txt.includes('ANO LETIVO') || txt.includes('ANUAL') || txt.includes('ANO')) return { tipo: 'ano', ano: anoRelatorio };
+    if (txt.includes('HOJE') || txt.includes('DIA')) return { tipo: 'dia', data: data };
+    if (txt.includes('TODOS') || txt.includes('GERAL') || txt.includes('COMPLETO') || txt.includes('TUDO')) return { tipo: 'todos' };
+    return { tipo: 'mes', mes: mesFiltro };
+  };
+
+  const processarRelatorioIA = (textoPrompt) => {
+    setCarregandoIA(true);
+
+    const periodo = extrairPeriodoRelatorio(textoPrompt);
+    const categoriasSolicitadas = extrairCategoriasIA(textoPrompt);
+
+    const transacoesFiltradas = transacoes.filter(t => {
+      if (!t.data) return false;
+      const [ano, mes, dia] = t.data.split('-');
+      if (periodo.tipo === 'todos') return true;
+      if (periodo.tipo === 'dia') return `${ano}-${mes}-${dia}` === data;
+      if (periodo.tipo === 'mes') return Number(mes) === periodo.mes;
+      if (periodo.tipo === 'ano') return Number(ano) === periodo.ano;
+      return true;
+    });
+
+    const periodoLabel = periodo.tipo === 'todos'
+      ? 'todos os meses'
+      : periodo.tipo === 'dia'
+        ? `dia ${data.split('-').reverse().join('/')}`
+        : periodo.tipo === 'ano'
+          ? `ano letivo ${periodo.ano}`
+          : `mês ${meses.find(item => item.n === periodo.mes)?.nome?.toLowerCase() || mesFiltro}`;
+
+    const itens = categoriasSolicitadas.map(categoria => {
+      const correspondencias = transacoesFiltradas.filter(t => {
+        const descricaoNormalizada = normalizarTexto(t.descricao || '');
+        return categoria.aliases.some(alias => descricaoNormalizada.includes(alias));
+      });
+
+      const quantidade = correspondencias.reduce((soma, item) => soma + extrairQuantidadeDescricao(item.descricao), 0);
+      const valorTotal = correspondencias.reduce((soma, item) => soma + parseValor(item.valor), 0);
+      return { ...categoria, quantidade, valorTotal, transacoes: correspondencias.length };
+    }).filter(item => item.quantidade > 0 || categoriasSolicitadas.length === categoriasIA.length);
+
+    const verbo = textoPrompt.toLowerCase().includes('troca') || textoPrompt.toLowerCase().includes('troc')
+      ? 'trocados'
+      : textoPrompt.toLowerCase().includes('vend')
+        ? 'vendidos'
+        : 'registrados';
+
+    const linhas = itens.map(item => `- ${item.rotulo}: ${item.quantidade} ${verbo} em ${item.transacoes} transação(ões) | total R$ ${item.valorTotal.toFixed(2)}`);
+
+    const valorTotalGeral = itens.reduce((soma, item) => soma + item.valorTotal, 0);
+    const quantidadeTotal = itens.reduce((soma, item) => soma + item.quantidade, 0);
+    const transacoesEncontradas = transacoesFiltradas.length;
+
+    const resposta = itens.length > 0
+      ? `RELATÓRIO PROFISSIONAL - ${periodoLabel.toUpperCase()}\n` +
+        `────────────────────────────────────────\n` +
+        `${linhas.join('\n')}\n` +
+        `────────────────────────────────────────\n` +
+        `Total itens: ${quantidadeTotal} | Total transações: ${transacoesEncontradas} | Valor total: R$ ${valorTotalGeral.toFixed(2)}`
+      : 'Nenhum item encontrado com os termos informados. Tente usar palavras como cabo, película, bateria ou tela de iphone e verifique o ano ou mês selecionado.';
+
+    setRespostaIA(resposta);
+    setCarregandoIA(false);
+  };
+
+  const gerarRelatorioIA = (e) => {
+    e?.preventDefault?.();
+    processarRelatorioIA(promptIA);
+  };
 
   const ehCombustivel = (descricao = '') => {
     const desc = normalizarTexto(descricao);
@@ -324,6 +423,61 @@ const App = () => {
             </select>
           </div>
         </header>
+
+        {/* --- ASSISTENTE IA --- */}
+        <div style={{ backgroundColor: '#11131a', padding: '20px', borderRadius: '15px', border: '1px solid #2f6fed', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ color: '#7ec8ff', margin: '0 0 6px', fontSize: '1.05rem' }}>Assistente IA do financeiro</h3>
+
+            </div>
+            <span style={{ color: '#7ec8ff', fontSize: '0.85rem' }}>IA LOCAL • PORTUGUÊS</span>
+          </div>
+
+          <form onSubmit={gerarRelatorioIA} style={{ display: 'grid', gap: '10px', marginTop: '14px' }}>
+            <select
+              value={anoRelatorio}
+              onChange={e => setAnoRelatorio(Number(e.target.value))}
+              style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #2f6fed', color: '#fff', borderRadius: '8px' }}
+            >
+              {anosDisponiveis.map(ano => (
+                <option key={ano} value={ano}>{ano}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={promptIA}
+              onChange={e => setPromptIA(e.target.value)}
+              placeholder="Digite sua pergunta para a IA, por exemplo: quantos cabos foram vendidos no ano letivo"
+              style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #2f6fed', color: '#fff', borderRadius: '8px' }}
+            />
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => {
+                const texto = 'faça um relatório anual de cabos, películas, baterias e telas de iphone';
+                setPromptIA(texto);
+                processarRelatorioIA(texto);
+              }} style={{ flex: '1 1 160px', minWidth: '160px', padding: '12px', backgroundColor: '#22c55e', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#000', fontWeight: 'bold' }}>
+                RELATÓRIO ANUAL
+              </button>
+              <button type="button" onClick={() => {
+                const texto = 'faça um relatório do mês de cabos, películas, baterias e telas de iphone';
+                setPromptIA(texto);
+                processarRelatorioIA(texto);
+              }} style={{ flex: '1 1 160px', minWidth: '160px', padding: '12px', backgroundColor: '#2563eb', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#fff', fontWeight: 'bold' }}>
+                RELATÓRIO MENSAL
+              </button>
+            </div>
+            <button type="submit" disabled={carregandoIA} style={{ padding: '12px', backgroundColor: '#2f6fed', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#fff', fontWeight: 'bold' }}>
+              {carregandoIA ? 'GERANDO RELATÓRIO...' : 'GERAR RELATÓRIO'}
+            </button>
+          </form>
+
+          {respostaIA && (
+            <div style={{ marginTop: '14px', padding: '14px', backgroundColor: '#0c1322', borderRadius: '10px', border: '1px solid #274d80', color: '#dceeff', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+              {respostaIA}
+            </div>
+          )}
+        </div>
 
         {/* --- CARDS DE GASTOS ESPECÍFICOS --- */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginBottom: '20px' }}>
