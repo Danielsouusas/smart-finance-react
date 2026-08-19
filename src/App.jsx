@@ -7,6 +7,38 @@ const supabaseUrl = 'https://hoegguhazbiyrpzegard.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZWdndWhhemJpeXJwemVnYXJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1MDk5MDEsImV4cCI6MjA4NTA4NTkwMX0.Csxr-t8ecO5QopNzfgPiFE6ukeLowYVFO-eDkPBe7S4';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Erro no App:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ background: '#0a0a0a', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', padding: '20px' }}>
+          <div style={{ background: '#11131a', border: '1px solid #ff3860', borderRadius: '12px', padding: '24px', maxWidth: '420px', textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 10px', color: '#ff3860' }}>Erro na aplicação</h2>
+            <p style={{ margin: 0, lineHeight: 1.6, color: '#ddd' }}>
+              O sistema encontrou um problema ao renderizar. Recarregue a página e verifique os dados da operação.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const App = () => {
   // --- ESTADOS DE AUTENTICAÇÃO ---
   const [session, setSession] = useState(null);
@@ -46,6 +78,37 @@ const App = () => {
 
   const normalizarTexto = (texto = '') =>
     texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+  const produtosFinanceiros = [
+    { chave: 'bateria', rotulo: 'BATERIA', aliases: ['BATERIA', 'BATERIAS', 'BATTERY', 'BATERIA IPHONE'], custo: 55.0 },
+    { chave: 'pelicula', rotulo: 'PELÍCULA', aliases: ['PELICULA', 'PELICULAS', 'PELÍCULA', 'PELÍCULAS', 'FILME', 'FILMES', 'FILM'], custo: 2.5 },
+    { chave: 'carregador', rotulo: 'CARREGADOR', aliases: ['CARREGADOR', 'CARREGADORES', 'CHARGER', 'CARREGADOR USB'], custo: 5.5 },
+    { chave: 'cabo', rotulo: 'CABO', aliases: ['CABO', 'CABOS', 'CABLE', 'CABLES', 'CABO USB', 'CABO DE CARGA'], custo: 2.5 },
+    { chave: 'fone', rotulo: 'FONE', aliases: ['FONE', 'FONES', 'HEADSET', 'AURICULAR', 'AUS', 'EARPHONE', 'EARPHONES'], custo: 2.5 },
+    { chave: 'suporte', rotulo: 'SUPORTE', aliases: ['SUPORTE', 'SUPORTES', 'SUPPORT'], custo: 15.0 },
+    { chave: 'chip', rotulo: 'CHIP', aliases: ['CHIP', 'CHIPS', 'SIMCARD', 'SIM CARD'], custo: 10.0 },
+    { chave: 'tela', rotulo: 'TELA', aliases: ['TELA', 'TELAS', 'DISPLAY', 'IPHONE', 'TELA IPHONE', 'TELA IPHONE 14', 'TELA IPHONE 15'], custo: 0 },
+    { chave: 'capinha', rotulo: 'CAPINHA', aliases: ['CAPINHA', 'CAPINHAS', 'CASE', 'CASES'], custo: 0 },
+    { chave: 'smartwatch', rotulo: 'SMARTWATCH', aliases: ['SMARTWATCH', 'RELÓGIO', 'WATCH'], custo: 0 },
+    { chave: 'celular', rotulo: 'CELULAR', aliases: ['CELULAR', 'SMARTPHONE', 'SAMSUNG', 'XIAOMI', 'MOTOROLA'], custo: 0 },
+    { chave: 'rezet', rotulo: 'REZET', aliases: ['REZET', 'REZETS', 'RESET'], custo: 0 }
+  ];
+
+  const extrairProdutoFinanceiro = (descricao = '') => {
+    const textoNormalizado = normalizarTexto(descricao);
+    const itensCorrespondentes = produtosFinanceiros
+      .filter(item => item.aliases.some(alias => textoNormalizado.includes(alias)))
+      .sort((a, b) => {
+        const maiorA = Math.max(...a.aliases.map(alias => textoNormalizado.includes(alias) ? alias.length : 0));
+        const maiorB = Math.max(...b.aliases.map(alias => textoNormalizado.includes(alias) ? alias.length : 0));
+        return maiorB - maiorA;
+      });
+
+    if (itensCorrespondentes.length > 0) return itensCorrespondentes[0].rotulo;
+
+    const match = textoNormalizado.match(/(BATERIA|PELICULA|CABO|CARREGADOR|FONE|TELA|CAPINHA|SUPORTE|CHIP|SMARTWATCH|CELULAR|REZET)/);
+    return match ? match[1] : 'OUTROS';
+  };
 
   const categoriasIA = [
     { chave: 'cabo', rotulo: 'CABOS', aliases: ['CABO', 'CABOS', 'CABLE', 'CABLES'] },
@@ -313,6 +376,83 @@ const App = () => {
     () => totaisPorMes.valores.filter(item => item.entrada > 0 || item.saida > 0),
     [totaisPorMes]
   );
+
+  const buildRankingPorPeriodo = (mesReferencia, anoReferencia) => {
+    const produtos = new Map();
+
+    transacoes.forEach((transacao) => {
+      const dataTransacao = transacao.data ? transacao.data.split('-') : null;
+      if (!dataTransacao || Number(dataTransacao[1]) !== mesReferencia || Number(dataTransacao[0]) !== anoReferencia) return;
+
+      const produto = extrairProdutoFinanceiro(transacao.descricao || '');
+      if (!produto || produto === 'OUTROS') return;
+
+      const item = produtos.get(produto) || {
+        produto,
+        quantidadeVendida: 0,
+        faturamento: 0,
+        custo: 0,
+        lucro: 0,
+        margem: 0,
+      };
+
+      const valor = parseValor(transacao.valor);
+      const quantidade = extrairQuantidadeDescricao(transacao.descricao || '');
+      const produtoInfo = produtosFinanceiros.find(p => p.rotulo === produto);
+      const custoPadrao = produtoInfo?.custo ?? 0;
+
+      if (transacao.tipo === 'entrada') {
+        item.quantidadeVendida += quantidade;
+        item.faturamento += valor;
+        item.custo += custoPadrao > 0 ? custoPadrao * quantidade : 0;
+      } else if (produtoInfo && produtoInfo.custo > 0) {
+        item.custo += custoPadrao * quantidade;
+      } else {
+        item.custo += valor;
+      }
+
+      produtos.set(produto, item);
+    });
+
+    return Array.from(produtos.values())
+      .map((item) => ({
+        ...item,
+        lucro: item.faturamento - item.custo,
+        margem: item.faturamento > 0 ? ((item.faturamento - item.custo) / item.faturamento) * 100 : 0,
+      }))
+      .sort((a, b) => b.lucro - a.lucro || b.faturamento - a.faturamento)
+      .map((item, index) => ({
+        ...item,
+        posicao: index + 1,
+        decisao: item.lucro > 0 ? (item.margem >= 30 ? 'VENDER MAIS' : 'MANTER') : 'PARAR DE COMPRAR',
+      }));
+  };
+
+  const mesAnteriorInfo = useMemo(() => {
+    const mesAnterior = mesFiltro === 1 ? 12 : mesFiltro - 1;
+    const anoAnterior = mesFiltro === 1 ? anoRelatorio - 1 : anoRelatorio;
+    return { mes: mesAnterior, ano: anoAnterior };
+  }, [mesFiltro, anoRelatorio]);
+
+  const rankingMensal = useMemo(
+    () => buildRankingPorPeriodo(mesFiltro, anoRelatorio),
+    [transacoes, mesFiltro, anoRelatorio]
+  );
+
+  const rankingMesAnterior = useMemo(
+    () => buildRankingPorPeriodo(mesAnteriorInfo.mes, mesAnteriorInfo.ano),
+    [transacoes, mesAnteriorInfo]
+  );
+
+  const melhorProdutoMes = rankingMensal[0];
+  const piorProdutoMes = [...rankingMensal].sort((a, b) => a.margem - b.margem)[0];
+  const totalFaturamentoMes = rankingMensal.reduce((soma, item) => soma + item.faturamento, 0);
+  const totalCustoMes = rankingMensal.reduce((soma, item) => soma + item.custo, 0);
+  const totalLucroMes = totalFaturamentoMes - totalCustoMes;
+  const totalFaturamentoMesAnterior = rankingMesAnterior.reduce((soma, item) => soma + item.faturamento, 0);
+  const variacaoFaturamento = totalFaturamentoMesAnterior === 0
+    ? null
+    : ((totalFaturamentoMes - totalFaturamentoMesAnterior) / totalFaturamentoMesAnterior) * 100;
 
   // --- LÓGICA DE SESSÃO ---
   useEffect(() => {
@@ -698,6 +838,99 @@ const App = () => {
           )}
         </div>
 
+        {/* --- RESUMO EXECUTIVO DO MÊS --- */}
+        <div style={{ backgroundColor: '#11131a', padding: '20px', borderRadius: '15px', border: '1px solid #274d80', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+            <div>
+              <h3 style={{ margin: '0 0 6px', color: '#7ec8ff', fontSize: '1.1rem' }}>Resumo executivo do mês</h3>
+              <small style={{ color: '#a9c5df' }}>Faturamento real • custo • lucro • margem comparativa</small>
+            </div>
+            <div style={{ color: '#dceeff', fontSize: '0.85rem', padding: '8px 12px', borderRadius: '999px', backgroundColor: '#0c1322', border: '1px solid #2f6fed' }}>
+              {variacaoFaturamento === null ? 'Sem comparação anterior' : `${variacaoFaturamento >= 0 ? '+' : ''}${variacaoFaturamento.toFixed(1)}% vs mês anterior`}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+            <div style={{ backgroundColor: '#0c1322', border: '1px solid #2f6fed', borderRadius: '10px', padding: '12px' }}>
+              <small style={{ color: '#7ec8ff' }}>FATURAMENTO</small>
+              <h4 style={{ margin: '8px 0 0', color: '#00d1b2' }}>R$ {totalFaturamentoMes.toFixed(2)}</h4>
+            </div>
+            <div style={{ backgroundColor: '#0c1322', border: '1px solid #ff3860', borderRadius: '10px', padding: '12px' }}>
+              <small style={{ color: '#ff9aa9' }}>CUSTO</small>
+              <h4 style={{ margin: '8px 0 0', color: '#ff9aa9' }}>R$ {totalCustoMes.toFixed(2)}</h4>
+            </div>
+            <div style={{ backgroundColor: '#0c1322', border: '1px solid #00d1b2', borderRadius: '10px', padding: '12px' }}>
+              <small style={{ color: '#7ec8ff' }}>LUCRO</small>
+              <h4 style={{ margin: '8px 0 0', color: totalLucroMes >= 0 ? '#00d1b2' : '#ff3860' }}>R$ {totalLucroMes.toFixed(2)}</h4>
+            </div>
+            <div style={{ backgroundColor: '#0c1322', border: '1px solid #f1c40f', borderRadius: '10px', padding: '12px' }}>
+              <small style={{ color: '#f1c40f' }}>MARGEM</small>
+              <h4 style={{ margin: '8px 0 0', color: totalFaturamentoMes > 0 ? '#f1c40f' : '#8ea8c8' }}>{totalFaturamentoMes > 0 ? `${((totalLucroMes / totalFaturamentoMes) * 100).toFixed(1)}%` : '0.0%'}</h4>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+            <div style={{ backgroundColor: '#0c1322', border: '1px solid #2f6fed', borderRadius: '10px', padding: '12px' }}>
+              <small style={{ color: '#7ec8ff' }}>PRODUTO COM MAIS LUCRO</small>
+              <h4 style={{ margin: '8px 0 0', color: '#dceeff' }}>{melhorProdutoMes ? melhorProdutoMes.produto : 'N/A'}</h4>
+            </div>
+            <div style={{ backgroundColor: '#0c1322', border: '1px solid #ff3860', borderRadius: '10px', padding: '12px' }}>
+              <small style={{ color: '#ff9aa9' }}>ATENÇÃO</small>
+              <h4 style={{ margin: '8px 0 0', color: '#dceeff' }}>{piorProdutoMes ? piorProdutoMes.produto : 'N/A'}</h4>
+            </div>
+          </div>
+        </div>
+
+        {/* --- RANKING MENSAL DE PRODUTOS --- */}
+        <div style={{ backgroundColor: '#11131a', padding: '20px', borderRadius: '15px', border: '1px solid #274d80', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+            <div>
+              <h3 style={{ margin: '0 0 6px', color: '#7ec8ff', fontSize: '1.1rem' }}>Ranking mensal de produtos</h3>
+              <small style={{ color: '#a9c5df' }}>Quantidade vendida • faturamento • custo • lucro • margem</small>
+            </div>
+            <div style={{ color: '#dceeff', fontSize: '0.85rem', padding: '8px 12px', borderRadius: '999px', backgroundColor: '#0c1322', border: '1px solid #2f6fed' }}>
+              {melhorProdutoMes ? `Top: ${melhorProdutoMes.produto} · Lucro R$ ${melhorProdutoMes.lucro.toFixed(2)}` : 'Sem dados do mês'}
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', minWidth: '780px', borderCollapse: 'collapse', color: '#e5f1ff' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#0c1322', color: '#7ec8ff' }}>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>#</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>PRODUTO</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>QTD</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>FATURAMENTO</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>CUSTO</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>LUCRO</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>MARGEM</th>
+                  <th style={{ padding: '12px', textAlign: 'center' }}>AÇÃO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rankingMensal.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ padding: '18px', textAlign: 'center', color: '#8ea8c8' }}>Nenhum produto encontrado para este mês.</td>
+                  </tr>
+                ) : (
+                  rankingMensal.map((item) => (
+                    <tr key={item.produto} style={{ borderBottom: '1px solid #222' }}>
+                      <td style={{ padding: '12px', color: '#7ec8ff' }}>{item.posicao}</td>
+                      <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.produto}</td>
+                      <td style={{ padding: '12px', textAlign: 'right' }}>{item.quantidadeVendida}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#00d1b2' }}>R$ {item.faturamento.toFixed(2)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#ff9aa9' }}>R$ {item.custo.toFixed(2)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: item.lucro >= 0 ? '#00d1b2' : '#ff3860', fontWeight: 'bold' }}>R$ {item.lucro.toFixed(2)}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: item.margem >= 0 ? '#7ec8ff' : '#ff9aa9', fontWeight: 'bold' }}>{item.margem.toFixed(1)}%</td>
+                      <td style={{ padding: '12px', textAlign: 'center', color: item.decisao === 'VENDER MAIS' ? '#00d1b2' : item.decisao === 'MANTER' ? '#f1c40f' : '#ff3860', fontWeight: 'bold' }}>{item.decisao}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         {/* --- FILTRO E WHATSAPP --- */}
         <div style={{ backgroundColor: '#161616', padding: '20px', borderRadius: '10px', border: '1px solid #333', marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -805,4 +1038,10 @@ const App = () => {
   
 };
 
-export default App;
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
