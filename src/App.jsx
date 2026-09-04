@@ -1,11 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
-import { createClient } from '@supabase/supabase-js';
-
-// --- CONFIGURAÇÃO DO BANCO DE DADOS ---
-const supabaseUrl = 'https://hoegguhazbiyrpzegard.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZWdndWhhemJpeXJwemVnYXJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1MDk5MDEsImV4cCI6MjA4NTA4NTkwMX0.Csxr-t8ecO5QopNzfgPiFE6ukeLowYVFO-eDkPBe7S4';
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from './supabaseClient';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -51,6 +46,8 @@ const App = () => {
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [tipo, setTipo] = useState('entrada');
+  const [mensagemOperacao, setMensagemOperacao] = useState('');
+  const [salvandoOperacao, setSalvandoOperacao] = useState(false);
 
   const obtenerDataLocal = () => {
     const d = new Date();
@@ -322,6 +319,8 @@ const App = () => {
     return Number(texto.replace(',', '.')) || 0;
   };
 
+  const normalizarData = (valorData) => String(valorData ?? '').slice(0, 10);
+
   const obterCategoriaTransacao = (tipo = '', descricao = '') => {
     const tipoNormalizado = normalizarTexto(tipo);
 
@@ -462,7 +461,12 @@ const App = () => {
   }, []);
 
   const buscarDados = async () => {
-    const { data: dataDb } = await supabase.from('transacoes').select('*').order('data', { ascending: true });
+    const { data: dataDb, error } = await supabase.from('transacoes').select('*').order('data', { ascending: true });
+    if (error) {
+      console.error('Erro ao carregar transações:', error);
+      alert(`Não foi possível carregar as transações: ${error.message}`);
+      return;
+    }
     if (dataDb) setTransacoes(dataDb);
   };
 
@@ -483,7 +487,12 @@ const App = () => {
 
   const deletarTransacao = async (id) => {
     if (window.confirm("DESEJA EXCLUIR ESTA OPERAÇÃO?")) {
-      await supabase.from('transacoes').delete().eq('id', id);
+      const { error } = await supabase.from('transacoes').delete().eq('id', id);
+      if (error) {
+        console.error('Erro ao excluir transação:', error);
+        alert(`Não foi possível excluir a transação: ${error.message}`);
+        return;
+      }
       buscarDados();
     }
   };
@@ -497,9 +506,12 @@ const App = () => {
 
     transacoes.forEach(t => {
       const v = parseValor(t.valor);
-      const dFormatada = t.data ? t.data.substring(0, 10) : "";
-      const mTrans = t.data ? parseInt(t.data.split('-')[1], 10) : 0;
-      const diaNumero = t.data ? parseInt(t.data.split('-')[2], 10) : 0;
+      const dataTransacao = normalizarData(t.data);
+      const [anoTransacao, mesTransacao, diaTransacao] = dataTransacao.split('-');
+      const dFormatada = dataTransacao;
+      const mTrans = parseInt(mesTransacao, 10) || 0;
+      const anoTrans = parseInt(anoTransacao, 10) || 0;
+      const diaNumero = parseInt(diaTransacao, 10) || 0;
       const categoria = obterCategoriaTransacao(t.tipo, t.descricao);
       const isEntrada = categoria === 'entrada';
       const isSaida = categoria !== 'entrada';
@@ -511,7 +523,7 @@ const App = () => {
       const isAgua = categoria === 'agua';
       const isDiversos = categoria === 'diversos';
 
-      if (mTrans === mesFiltro) {
+      if (mTrans === mesFiltro && anoTrans === anoRelatorio) {
         if (isEntrada) totalEntradasMes += v;
         if (isSaida) totalSaidasMes += v;
         if (isCombustivel) totalCombustivel += v;
@@ -544,14 +556,18 @@ const App = () => {
     });
 
     return { ent: totalEntradasMes, sai: totalSaidasMes, lista: transacoes, entDia, saiDia, totalCombustivel, totalMercado, totalLazer, totalAluguel, totalLuz, totalAgua, totalDiversos, acumuladoEntradasAte27, acumuladoSaidasAte27, acumuladoCombustivelAte27, acumuladoMercadoAte27, acumuladoEntradasAte31, acumuladoSaidasAte31, acumuladoCombustivelAte31, acumuladoMercadoAte31 };
-  }, [transacoes, mesFiltro, data]);
+  }, [transacoes, mesFiltro, anoRelatorio, data]);
 
   // --- GRÁFICO AGRUPADO POR DIA ---
   const dadosGrafico = useMemo(() => {
     const agrupado = {};
 
     transacoes
-      .filter(t => t.data && parseInt(t.data.split('-')[1], 10) === mesFiltro)
+      .filter(t => {
+        const dataTransacao = normalizarData(t.data);
+        const [anoTransacao, mesTransacao] = dataTransacao.split('-');
+        return Number(mesTransacao) === mesFiltro && Number(anoTransacao) === anoRelatorio;
+      })
       .forEach(t => {
         const dia = t.data ? t.data.substring(8, 10) : "00";
         const categoria = obterCategoriaTransacao(t.tipo, t.descricao);
@@ -941,7 +957,7 @@ const App = () => {
         </div>
 
         {/* --- GRÁFICO --- */}
-        <div style={{ backgroundColor: 'linear-gradient(135deg, #111 0%, #1a1a1a 100%)', padding: '25px', borderRadius: '15px', border: '1px solid #222', marginBottom: '20px', height: '350px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)' }}>
+        <div style={{ backgroundColor: 'linear-gradient(135deg, #111 0%, #1a1a1a 100%)', padding: '25px', borderRadius: '15px', border: '1px solid #222', marginBottom: '20px', height: '350px', minWidth: 0, boxSizing: 'border-box', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)' }}>
           <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ color: '#00d1b2', margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>FLUXO DO MÊS</h3>
             <div style={{ display: 'flex', gap: '20px' }}>
@@ -955,7 +971,7 @@ const App = () => {
               </div>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <ResponsiveContainer width="100%" height={280} minWidth={1} minHeight={1}>
             <AreaChart data={dadosGrafico} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
@@ -983,9 +999,34 @@ const App = () => {
             <h4 style={{ color: '#888', marginTop: 0 }}>NOVA OPERAÇÃO</h4>
             <form onSubmit={async (e) => {
               e.preventDefault();
+              setMensagemOperacao('');
               const val = parseValor(valor);
-              await supabase.from('transacoes').insert([{ descricao: descricao.toUpperCase(), valor: val, tipo, data }]);
-              await buscarDados(); setDescricao(''); setValor('');
+              if (!Number.isFinite(val) || val <= 0) {
+                setMensagemOperacao('Informe um valor maior que zero.');
+                return;
+              }
+              setSalvandoOperacao(true);
+              try {
+                const { data: transacaoSalva, error } = await supabase
+                  .from('transacoes')
+                  .insert([{ descricao: descricao.toUpperCase(), valor: val, tipo, data }])
+                  .select()
+                  .single();
+                if (error) {
+                  console.error('Erro ao salvar transação:', error);
+                  setMensagemOperacao(`Erro do Supabase: ${error.message}`);
+                  return;
+                }
+                setMensagemOperacao('Operação registrada com sucesso.');
+                if (transacaoSalva) setTransacoes(transacoesAtuais => [...transacoesAtuais, transacaoSalva]);
+                setDescricao('');
+                setValor('');
+              } catch (error) {
+                console.error('Erro inesperado ao salvar transação:', error);
+                setMensagemOperacao(`Erro de conexão: ${error.message}`);
+              } finally {
+                setSalvandoOperacao(false);
+              }
             }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <input type="text" placeholder="DESCRIÇÃO" value={descricao} onChange={e => setDescricao(e.target.value)} required style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '5px' }} />
               <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '5px' }}>
@@ -1000,7 +1041,8 @@ const App = () => {
                 <option value="diversos">DIVERSOS (...)</option>
               </select>
               <input type="text" placeholder="VALOR R$" value={valor} onChange={e => setValor(e.target.value)} required style={{ padding: '12px', backgroundColor: '#000', border: '1px solid #333', color: '#fff', borderRadius: '5px' }} />
-              <button type="submit" style={{ padding: '14px', backgroundColor: '#00d1b2', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '5px', color: '#000' }}>EXECUTAR</button>
+              <button type="submit" disabled={salvandoOperacao} style={{ padding: '14px', backgroundColor: '#00d1b2', border: 'none', cursor: salvandoOperacao ? 'wait' : 'pointer', fontWeight: 'bold', borderRadius: '5px', color: '#000' }}>{salvandoOperacao ? 'SALVANDO...' : 'EXECUTAR'}</button>
+              {mensagemOperacao && <small style={{ color: mensagemOperacao.startsWith('Erro') || mensagemOperacao.startsWith('Informe') ? '#ff9aa9' : '#00d1b2' }}>{mensagemOperacao}</small>}
             </form>
           </div>
 
