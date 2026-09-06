@@ -461,13 +461,29 @@ const App = () => {
   }, []);
 
   const buscarDados = async () => {
-    const { data: dataDb, error } = await supabase.from('transacoes').select('*').order('data', { ascending: true });
-    if (error) {
-      console.error('Erro ao carregar transações:', error);
-      alert(`Não foi possível carregar as transações: ${error.message}`);
-      return;
+    const tamanhoPagina = 1000;
+    const transacoesCarregadas = [];
+    let inicio = 0;
+
+    while (true) {
+      const { data: pagina, error } = await supabase
+        .from('transacoes')
+        .select('*')
+        .order('data', { ascending: true })
+        .range(inicio, inicio + tamanhoPagina - 1);
+
+      if (error) {
+        console.error('Erro ao carregar transações:', error);
+        alert(`Não foi possível carregar as transações: ${error.message}`);
+        return;
+      }
+
+      transacoesCarregadas.push(...(pagina || []));
+      if (!pagina || pagina.length < tamanhoPagina) break;
+      inicio += tamanhoPagina;
     }
-    if (dataDb) setTransacoes(dataDb);
+
+    setTransacoes(transacoesCarregadas);
   };
 
   useEffect(() => { if (session) buscarDados(); }, [session]);
